@@ -1,3 +1,4 @@
 # Written by `pnpm bindings` with LF endings and compared byte for byte by a test, so a checkout
-# on Windows (which would make it CRLF) must not change it.
+# on Windows (which would make them CRLF) must not change them.
 ui/src/bindings.ts text eol=lf
+ui/src/failureReasons.ts text eol=lf
