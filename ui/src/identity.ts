@@ -1,7 +1,8 @@
 // Identity export and import: what the dialogs ask of the user and how a failure is worded.
 
-import type { IdentityError, IdentityErrorKind } from "./bindings";
+import type { IdentityErrorKind } from "./bindings";
 import { t, type MessageKey } from "./i18n";
+import { wordShellError } from "./shellError";
 
 /**
  * The catalogue message (section 10) for each kind of identity failure. A kind added in the shell
@@ -34,14 +35,7 @@ export function passwordProblem(password: string, confirmation: string): string 
   return null;
 }
 
-function isIdentityError(e: unknown): e is IdentityError {
-  return typeof e === "object" && e !== null && "kind" in e && "message" in e;
-}
-
 /** What went wrong with an export or import, in words for the person using the app. */
 export function identityFailure(e: unknown): string {
-  if (isIdentityError(e)) {
-    return t(IDENTITY_ERRORS[e.kind], { reason: e.message });
-  }
-  return t("identity.failed", { reason: e instanceof Error ? e.message : String(e) });
+  return wordShellError(e, IDENTITY_ERRORS, IDENTITY_ERRORS.other);
 }

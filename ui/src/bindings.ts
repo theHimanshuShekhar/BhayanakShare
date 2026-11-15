@@ -16,6 +16,11 @@ export const commands = {
 	 *  from the next Offer on; resolves to the folder as kept.
 	 */
 	setSaveFolder: (path: string) => __TAURI_INVOKE<string>("set_save_folder", { path }),
+	/**
+	 *  Rejects when the save folder, chosen earlier, is on a drive that is not connected (Settings
+	 *  says so); a folder that is there, or only missing, resolves.
+	 */
+	checkSaveFolderDrive: () => __TAURI_INVOKE<null>("check_save_folder_drive"),
 	/**  Whether first run is still to be done: the UI shows its screen instead of the tabs. */
 	needsFirstRun: () => __TAURI_INVOKE<boolean>("needs_first_run"),
 	/**  Records that the user has been through first run. */

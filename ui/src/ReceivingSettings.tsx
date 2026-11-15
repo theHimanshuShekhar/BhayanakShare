@@ -16,7 +16,12 @@ export function ReceivingSettings({ api }: { api: Api }) {
   useEffect(() => {
     let live = true;
     api.saveFolder().then(
-      (path) => live && setFolder(path),
+      (path) => {
+        if (!live) return;
+        setFolder(path);
+        // A folder chosen earlier may be on a drive that has since gone (catalogue F6).
+        api.checkSaveFolderDrive().catch((e) => live && setError(saveFolderFailure(e)));
+      },
       () => live && setError(t("saveFolder.loadFailed")),
     );
     return () => {

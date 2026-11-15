@@ -1,7 +1,8 @@
 // Choosing the save folder: how a refused folder is worded.
 
-import type { SaveFolderError, SaveFolderErrorKind } from "./bindings";
-import { t, type MessageKey } from "./i18n";
+import type { SaveFolderErrorKind } from "./bindings";
+import type { MessageKey } from "./i18n";
+import { wordShellError } from "./shellError";
 
 /**
  * The catalogue message (section 6) for each kind of refused folder. `other` has the reason of the
@@ -17,14 +18,7 @@ export const SAVE_FOLDER_ERRORS: Record<SaveFolderErrorKind, MessageKey> = {
   other: "saveFolder.failed",
 };
 
-function isSaveFolderError(e: unknown): e is SaveFolderError {
-  return typeof e === "object" && e !== null && "kind" in e && "message" in e;
-}
-
 /** Why a folder could not be made the save folder, in words for the person using the app. */
 export function saveFolderFailure(e: unknown): string {
-  if (isSaveFolderError(e)) {
-    return t(SAVE_FOLDER_ERRORS[e.kind], { reason: e.message });
-  }
-  return t("saveFolder.failed", { reason: e instanceof Error ? e.message : String(e) });
+  return wordShellError(e, SAVE_FOLDER_ERRORS, SAVE_FOLDER_ERRORS.other);
 }

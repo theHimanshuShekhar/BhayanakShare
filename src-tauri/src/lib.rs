@@ -45,6 +45,10 @@ const SAVE_DIR_VAR: &str = "BHAYANAKSHARE_SAVE_DIR";
 /// its own (the tray and notifications are English constants too), so this is one as well.
 const START_FAILED_TITLE: &str = "BhayanakShare can't start";
 
+/// The start-failure dialog's message when the keychain is locked or not running (catalogue H2).
+const KEYCHAIN_UNAVAILABLE: &str = "The system keychain that holds this Device's secret key is locked or not \
+    running, so BhayanakShare did not start; unlock it and start BhayanakShare again (no new Device ID is made).";
+
 /// Set when the app is leaving to start again, as after an identity import.
 #[derive(Default)]
 struct Relaunch(AtomicBool);
@@ -255,6 +259,14 @@ async fn save_folder(device: State<'_, Device>) -> Result<String, String> {
 async fn set_save_folder(device: State<'_, Device>, path: String) -> Result<String, SaveFolderError> {
     let folder = device.set_save_folder(std::path::Path::new(&path)).await?;
     Ok(folder.to_string_lossy().into_owned())
+}
+
+/// Rejects when the save folder, chosen earlier, is on a drive that is not connected (Settings
+/// says so); a folder that is there, or only missing, resolves.
+#[tauri::command]
+#[specta::specta]
+async fn check_save_folder_drive(device: State<'_, Device>) -> Result<(), SaveFolderError> {
+    Ok(device.check_save_folder_drive().await?)
 }
 
 /// Whether first run is still to be done: the UI shows its screen instead of the tabs.
@@ -703,6 +715,7 @@ pub fn specta_builder<R: Runtime>() -> Builder<R> {
             my_id,
             save_folder,
             set_save_folder,
+            check_save_folder_drive,
             needs_first_run,
             finish_first_run,
             send_files,
@@ -785,10 +798,7 @@ pub fn start_device<R: Runtime>(
 /// running (H2), which is never a reason to make a new key; anything else as it is.
 fn start_failure_message(e: &(dyn std::error::Error + 'static)) -> String {
     match e.downcast_ref::<Error>() {
-        Some(Error::Key(KeyError::StoreUnavailable(_))) => "The system keychain that holds this Device's secret key \
-             is locked or not running, so BhayanakShare did not start; unlock it and start BhayanakShare again (no new \
-             Device ID is made)."
-            .to_owned(),
+        Some(Error::Key(KeyError::StoreUnavailable(_))) => KEYCHAIN_UNAVAILABLE.to_owned(),
         _ => e.to_string(),
     }
 }

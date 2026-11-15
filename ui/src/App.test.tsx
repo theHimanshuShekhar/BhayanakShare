@@ -2209,6 +2209,15 @@ describe("Settings sections", () => {
       expect(screen.queryByRole("alert")).toBeNull();
     });
 
+    it("says when the save folder chosen earlier is on a drive that is not connected", async () => {
+      const notConnected = { kind: "not_connected", message: "the folder is on a drive that is not connected" };
+      await open(fakeApi({ checkSaveFolderDrive: vi.fn(() => Promise.reject(notConnected)) }));
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        "That folder is on a drive that is not connected; connect it or choose another folder.",
+      );
+      expect(await shown()).toBe("/home/me/Downloads/BhayanakShare");
+    });
+
     it("keeps the old folder and says why when the folder cannot be used", async () => {
       await open(
         fakeApi({ setSaveFolder: vi.fn(() => Promise.reject({ kind: "not_a_folder", message: "not a folder" })) }),

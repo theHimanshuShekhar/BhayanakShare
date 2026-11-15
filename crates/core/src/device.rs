@@ -1146,6 +1146,15 @@ impl Device {
         Ok(folder)
     }
 
+    /// Fails with [`Error::SaveFolder`] (`NotConnected`) when the save folder, chosen earlier, is
+    /// missing because the drive it is on is not connected, which Settings says. A folder that is
+    /// there, or only missing, passes: what to do about that is the Offer sheet's to say.
+    pub async fn check_save_folder_drive(&self) -> Result<(), Error> {
+        let folder = self.save_folder().await?;
+        let missing = blocking("checking the save folder's drive", move || save_folder::on_missing_drive(&folder)).await?;
+        if missing { Err(save_folder::SaveFolderProblem::NotConnected.into()) } else { Ok(()) }
+    }
+
     /// Whether first run has not been finished yet: the Device has never been told, with
     /// [`Device::finish_first_run`], that the user has been through the first-run screen. It is
     /// the shell's to show that screen while this is true.

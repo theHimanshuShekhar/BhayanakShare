@@ -63,6 +63,7 @@ export function fakeApi(overrides: Partial<Api> = {}, initialContacts: Contact[]
       saveFolder = path;
       return Promise.resolve(path);
     }),
+    checkSaveFolderDrive: vi.fn(() => Promise.resolve(null)),
     needsFirstRun: vi.fn(() => Promise.resolve(firstRun)),
     finishFirstRun: vi.fn(() => {
       firstRun = false;

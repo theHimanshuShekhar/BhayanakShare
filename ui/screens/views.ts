@@ -682,6 +682,20 @@ export const VIEWS: View[] = [
     setup: settings,
   },
   {
+    id: "settings-save-folder-not-connected",
+    group: "Settings",
+    title: "The save folder chosen earlier is on a drive that is not connected",
+    overrides: {
+      saveFolder: () => Promise.resolve("/media/priya/Backup/BhayanakShare"),
+      checkSaveFolderDrive: () =>
+        Promise.reject({ kind: "not_connected", message: "the folder is on a drive that is not connected" }),
+    },
+    setup: async () => {
+      await settings();
+      await screen.findByText(/on a drive that is not connected/);
+    },
+  },
+  {
     id: "settings-update-found",
     group: "Settings",
     title: "All sections, with a newer version found",

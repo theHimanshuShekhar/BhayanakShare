@@ -161,6 +161,8 @@ async fn the_default_save_folder_is_made_again_at_start_but_one_the_user_set_tha
     assert!(!chosen.exists(), "a missing folder the user set was made");
     assert!(!tmp.path().join("drive").exists());
     assert_eq!(bob.device.save_folder().await.unwrap(), chosen);
+    // Only missing, not on a drive that is gone: Settings has nothing to say about its drive.
+    bob.device.check_save_folder_drive().await.unwrap();
 
     let (_src, path) = write_source("waiting.txt", b"waiting");
     let id = alice.device.send_file(bob.addr(), &path).await.unwrap();

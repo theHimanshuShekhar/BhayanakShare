@@ -56,6 +56,9 @@ export interface Api {
   /** Makes `path`, an absolute path, the save folder from the next Offer on (made if missing, and
    * it must be writable); resolves to the folder as kept. Rejects with a `SaveFolderError`. */
   setSaveFolder(path: string): Promise<string>;
+  /** Rejects with a `SaveFolderError` when the save folder, chosen earlier, is on a drive that is
+   * not connected; resolves when it is there or only missing. */
+  checkSaveFolderDrive(): Promise<unknown>;
   /** Whether first run is still to be done: its screen is shown instead of the tabs. */
   needsFirstRun(): Promise<boolean>;
   /** Records that the user has been through first run. */
@@ -204,6 +207,7 @@ export const tauriApi: Api = {
   myId: commands.myId,
   saveFolder: commands.saveFolder,
   setSaveFolder: commands.setSaveFolder,
+  checkSaveFolderDrive: commands.checkSaveFolderDrive,
   needsFirstRun: commands.needsFirstRun,
   finishFirstRun: commands.finishFirstRun,
   sendFiles: commands.sendFiles,
