@@ -15,8 +15,8 @@ body:
     id: app-version
     attributes:
       label: App version
-      description: Settings, then Updates, shows it (for example 0.1.0).
-      placeholder: "0.1.0"
+      description: Settings, then Updates, shows it (for example 0.9.0).
+      placeholder: "0.9.0"
     validations:
       required: true
   - type: dropdown

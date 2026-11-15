@@ -525,7 +525,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bhayanakshare"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "auto-launch",
  "bhayanakshare-core",
@@ -555,7 +555,7 @@ dependencies = [
 
 [[package]]
 name = "bhayanakshare-core"
-version = "0.1.0"
+version = "0.9.0"
 dependencies = [
  "aes-gcm",
  "argon2",
