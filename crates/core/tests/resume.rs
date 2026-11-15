@@ -487,10 +487,32 @@ async fn a_pending_offer_does_not_survive_a_sender_restart() {
 
     alice.restart().await;
 
-    // Alice's record says Expired, and nothing is waiting for Bob's answer to it any more.
+    // Both records say the Offer lapsed because the Sender restarted, not that nobody answered
+    // in time, and nothing is waiting for Bob's answer to it any more.
+    let restarted = TransferState::Expired { restarted: Some(Role::Sender) };
     let records = alice.device.transfers().await.unwrap();
     assert_eq!(records.len(), 1);
-    assert_eq!((records[0].id, &records[0].state), (id, &TransferState::Expired));
+    assert_eq!((records[0].id, &records[0].state), (id, &restarted));
+    assert_eq!(bob.wait_state(id, "expired").await.state, restarted);
+    assert!(bob.device.accept(id).await.is_err());
+    alice.shutdown().await;
+    bob.shutdown().await;
+}
+
+#[tokio::test]
+async fn a_pending_offer_does_not_survive_a_receiver_restart() {
+    let mut alice = TestDevice::start("alice").await;
+    let mut bob = TestDevice::start("bob").await;
+    let (_src, path) = big_file("note.bin", 1 << 20);
+    let id = alice.device.send_file(bob.addr(), &path).await.unwrap();
+    bob.wait_offer().await;
+
+    bob.restart().await;
+
+    let restarted = TransferState::Expired { restarted: Some(Role::Receiver) };
+    assert_eq!(alice.wait_state(id, "expired").await.state, restarted);
+    let records = bob.device.transfers().await.unwrap();
+    assert_eq!((records[0].id, &records[0].state), (id, &restarted));
     alice.shutdown().await;
     bob.shutdown().await;
 }

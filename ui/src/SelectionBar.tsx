@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Api } from "./api";
 import { Hint } from "./Banner";
 import { t } from "./i18n";
+import { sendFailure } from "./sending";
 import { TextComposer, useFocusWhenLeft } from "./TextComposer";
 import { baseName } from "./transfers";
 
@@ -76,7 +77,7 @@ export function SelectionBar({
       }
       onSent();
     } catch (e) {
-      setError(t("send.failed", { reason: e instanceof Error ? e.message : String(e) }));
+      setError(sendFailure(e));
     } finally {
       setBusy(false);
     }

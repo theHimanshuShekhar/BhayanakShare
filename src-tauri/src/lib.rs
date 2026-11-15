@@ -26,7 +26,7 @@ use bhayanakshare_core::{
     BatchId, Contact, Device, DeviceAddr, DeviceConfig, DeviceId, DiscoveryStatus, Error, Event, HistoryEntry,
     HistoryQuery, IdentityFileError, KeyError, KeySource, Network, Role, SaveFolderProblem, SpaceCheck,
     SystemClock,
-    SystemFreeSpace, TransferId, Visibility,
+    SystemFreeSpace, TransferId, Visibility, manifest::ManifestError,
 };
 use logging::Logging;
 use serde::Serialize;
@@ -130,6 +130,8 @@ pub enum SaveFolderErrorKind {
     NotWritable,
     /// The path is not text.
     NotText,
+    /// It is on a drive that is not connected.
+    NotConnected,
     Other,
 }
 
@@ -141,9 +143,48 @@ impl From<Error> for SaveFolderError {
             Error::SaveFolder(SaveFolderProblem::CannotCreate) => SaveFolderErrorKind::CannotCreate,
             Error::SaveFolder(SaveFolderProblem::NotWritable) => SaveFolderErrorKind::NotWritable,
             Error::SaveFolder(SaveFolderProblem::NotText) => SaveFolderErrorKind::NotText,
+            Error::SaveFolder(SaveFolderProblem::NotConnected) => SaveFolderErrorKind::NotConnected,
             _ => SaveFolderErrorKind::Other,
         };
         Self { kind, message: e.to_string() }
+    }
+}
+
+/// Why files could not be offered, in the terms the UI words differently.
+#[derive(Debug, Serialize, Type)]
+pub struct SendError {
+    kind: SendErrorKind,
+    /// For the kinds the UI has no wording of its own for.
+    message: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum SendErrorKind {
+    /// What was chosen passes one of the Offer's limits: too many files and folders, too long a
+    /// list, a path over 4,096 bytes or a name over 255.
+    TooBig,
+    Other,
+}
+
+impl From<Error> for SendError {
+    fn from(e: Error) -> Self {
+        let kind = match &e {
+            Error::Manifest(
+                ManifestError::TooManyEntries
+                | ManifestError::TooLarge
+                | ManifestError::PathTooLong(_)
+                | ManifestError::NameTooLong(_),
+            ) => SendErrorKind::TooBig,
+            _ => SendErrorKind::Other,
+        };
+        Self { kind, message: e.to_string() }
+    }
+}
+
+impl From<String> for SendError {
+    fn from(message: String) -> Self {
+        Self { kind: SendErrorKind::Other, message }
     }
 }
 
@@ -238,10 +279,10 @@ async fn send_files(
     device: State<'_, Device>,
     to: String,
     paths: Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, SendError> {
     let to: DeviceId = to.trim().parse().map_err(|e| format!("{e}"))?;
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let id = device.send(to, &paths).await.map_err(|e| e.to_string())?;
+    let id = device.send(to, &paths).await?;
     Ok(id.to_string())
 }
 
@@ -253,10 +294,10 @@ async fn send_batch(
     device: State<'_, Device>,
     to: Vec<String>,
     paths: Vec<String>,
-) -> Result<String, String> {
+) -> Result<String, SendError> {
     let to = to.iter().map(|id| parse_id(id).map(DeviceAddr::from)).collect::<Result<Vec<_>, _>>()?;
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let sent = device.send_batch(&to, &paths).await.map_err(|e| e.to_string())?;
+    let sent = device.send_batch(&to, &paths).await?;
     Ok(sent.id.to_string())
 }
 
@@ -292,21 +333,22 @@ async fn cancel_batch(device: State<'_, Device>, batch_id: BatchId) -> Result<()
 /// Sends a Failed Transfer of a Batch again, with a new Offer; resolves to the new Transfer ID.
 #[tauri::command]
 #[specta::specta]
-async fn retry_transfer(device: State<'_, Device>, transfer_id: TransferId) -> Result<String, String> {
-    let id = device.retry(transfer_id).await.map_err(|e| e.to_string())?;
+async fn retry_transfer(device: State<'_, Device>, transfer_id: TransferId) -> Result<String, SendError> {
+    let id = device.retry(transfer_id).await?;
     Ok(id.to_string())
 }
 
-/// Whether a pending Offer fits in `folder` (the save folder when absent).
+/// Whether a pending Offer fits in `folder` (the save folder when absent). A folder that cannot
+/// be used says why, as choosing one does.
 #[tauri::command]
 #[specta::specta]
 async fn check_offer(
     device: State<'_, Device>,
     transfer_id: TransferId,
     folder: Option<String>,
-) -> Result<SpaceCheck, String> {
+) -> Result<SpaceCheck, SaveFolderError> {
     let folder = folder.map(PathBuf::from);
-    device.check_offer(transfer_id, folder.as_deref()).await.map_err(|e| e.to_string())
+    Ok(device.check_offer(transfer_id, folder.as_deref()).await?)
 }
 
 /// Accepts a pending Offer into `folder` for this Offer only (the save folder when absent).
@@ -340,8 +382,8 @@ async fn cancel_transfer(device: State<'_, Device>, transfer_id: TransferId) -> 
 async fn resend_transfer(
     device: State<'_, Device>,
     transfer_id: TransferId,
-) -> Result<String, String> {
-    let id = device.resend(transfer_id).await.map_err(|e| e.to_string())?;
+) -> Result<String, SendError> {
+    let id = device.resend(transfer_id).await?;
     Ok(id.to_string())
 }
 
@@ -739,11 +781,22 @@ pub fn start_device<R: Runtime>(
     Ok(())
 }
 
+/// What the start-failure dialog says: the catalogue's sentence for a keychain that is locked or not
+/// running (H2), which is never a reason to make a new key; anything else as it is.
+fn start_failure_message(e: &(dyn std::error::Error + 'static)) -> String {
+    match e.downcast_ref::<Error>() {
+        Some(Error::Key(KeyError::StoreUnavailable(_))) => "The system keychain that holds this Device's secret key \
+             is locked or not running, so BhayanakShare did not start; unlock it and start BhayanakShare again (no new \
+             Device ID is made)."
+            .to_owned(),
+        _ => e.to_string(),
+    }
+}
+
 /// Tells the user why the Device did not start, and exits with an error. Setup runs on the main
 /// thread, which a blocking dialog must not, so this waits on a thread of its own, and the event
 /// loop that shows the dialog carries on meanwhile.
 fn fail_to_start<R: Runtime>(app: &AppHandle<R>, reason: &str) {
-    tracing::error!("the Device did not start: {reason}");
     let app = app.clone();
     let reason = reason.to_owned();
     std::thread::spawn(move || {
@@ -864,7 +917,9 @@ pub fn run() {
             let started = config.map_err(Into::into).and_then(|config| start_device(app, config));
             if let Err(e) = started {
                 // Not a panic: the window is not shown yet, so the user would see nothing.
-                fail_to_start(app.handle(), &e.to_string());
+                // The log keeps the error itself; the dialog says it in words for the user.
+                tracing::error!("the Device did not start: {e}");
+                fail_to_start(app.handle(), &start_failure_message(e.as_ref()));
                 return Ok(());
             }
 
@@ -1044,6 +1099,44 @@ mod tests {
         assert!(autostart_allowed(false, true).is_ok());
         let refused = autostart_allowed(true, true).unwrap_err();
         assert!(refused.contains(DATA_DIR_VAR), "{refused}");
+    }
+
+    #[test]
+    fn a_locked_keychain_at_start_is_said_in_the_catalogues_words_and_anything_else_as_it_is() {
+        let locked: Box<dyn std::error::Error> = Box::new(Error::Key(KeyError::StoreUnavailable("locked".into())));
+        assert_eq!(
+            start_failure_message(locked.as_ref()),
+            "The system keychain that holds this Device's secret key is locked or not running, so BhayanakShare did \
+             not start; unlock it and start BhayanakShare again (no new Device ID is made)."
+        );
+        let other: Box<dyn std::error::Error> = Box::new(Error::Network("no sockets".into()));
+        assert_eq!(start_failure_message(other.as_ref()), "no sockets");
+    }
+
+    #[test]
+    fn a_folder_on_a_drive_that_is_not_connected_is_a_kind_of_its_own() {
+        let err = SaveFolderError::from(Error::SaveFolder(SaveFolderProblem::NotConnected));
+        assert_eq!(err.kind, SaveFolderErrorKind::NotConnected);
+        let other = SaveFolderError::from(Error::NotAFolder("/gone".into()));
+        assert_eq!((other.kind, other.message.as_str()), (SaveFolderErrorKind::Other, "/gone is not a folder"));
+    }
+
+    #[test]
+    fn a_selection_over_the_limits_is_too_big_to_send_and_anything_else_says_why() {
+        use bhayanakshare_core::manifest::ManifestError;
+
+        for limit in [
+            ManifestError::TooManyEntries,
+            ManifestError::TooLarge,
+            ManifestError::PathTooLong(0),
+            ManifestError::NameTooLong(0),
+        ] {
+            assert_eq!(SendError::from(Error::Manifest(limit)).kind, SendErrorKind::TooBig, "{limit}");
+        }
+        let other = SendError::from(Error::Manifest(ManifestError::InvalidName(0)));
+        assert_eq!(other.kind, SendErrorKind::Other);
+        assert_eq!(other.message, "Couldn't be sent: invalid file names");
+        assert_eq!(SendError::from(Error::NoReceivers).kind, SendErrorKind::Other);
     }
 
     #[test]

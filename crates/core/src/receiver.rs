@@ -69,8 +69,8 @@ use crate::{
         TOO_MUCH, UNEXPECTED, WRONG_FILE,
     },
     session::{
-        CLOSE_GRACE, Failure, HelloError, Session, Stall, Stop, expect_hello, fail, made_progress, retry_delay,
-        save_progress, stop,
+        CLOSE_GRACE, Failure, HelloError, Session, Stall, Stop, expect_hello, fail, hang_up_for_shutdown,
+        made_progress, peer_shut_down, retry_delay, save_progress, stop,
     },
     store,
     transfer::{OFFER_TTL_MS, Role, TransferId, TransferKind, TransferState},
@@ -171,8 +171,11 @@ async fn run(sh: Arc<Shared>, conn: Connection) {
     let mut info = None;
     let mut opened = None;
     let outcome = tokio::select! {
-        () = sh.cancel.cancelled() => None,
+        // The flow first: an unanswered Offer hangs up for the shutdown itself (see
+        // `hang_up_for_shutdown`), and that has to happen before the flow is dropped.
+        biased;
         outcome = flow(&sh, &conn, &mut info, &mut opened) => Some(outcome),
+        () = sh.cancel.cancelled() => None,
     };
     finish(&sh, info, opened, outcome).await;
 }
@@ -376,11 +379,20 @@ async fn flow(
                     return Ok(());
                 }
                 Some(Ok(_)) => return Err(Failure::with(UNEXPECTED, "message while deciding")),
+                Some(Err(_)) | None if peer_shut_down(&session.conn) => {
+                    stop(sh, &info, None, Stop::PeerShutDown).await;
+                    return Ok(());
+                }
                 Some(Err(e)) => return Err(Failure::with(LOST, e)),
                 None => return Err(Failure::with(LOST, "stream ended while deciding")),
             },
             () = cancel.cancelled() => {
                 stop(sh, &info, Some(&mut session), Stop::Cancelled).await;
+                return Ok(());
+            }
+            // Still Offered in the database: the next start records it as lost to the restart.
+            () = sh.cancel.cancelled() => {
+                hang_up_for_shutdown(&session.conn);
                 return Ok(());
             }
             () = &mut expiry => {

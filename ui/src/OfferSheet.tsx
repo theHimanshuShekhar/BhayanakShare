@@ -5,6 +5,7 @@ import { contactName, findContact, peerName } from "./contacts";
 import { Icon } from "./Icon";
 import { t } from "./i18n";
 import { PlainText } from "./PlainText";
+import { saveFolderFailure } from "./saveFolder";
 import { Sheet } from "./Sheet";
 import {
   OFFER_WARNINGS,
@@ -86,7 +87,7 @@ function Offer({
     setFolderError(null);
     api.checkOffer(offer.id, folder).then(
       (check) => live && setSpace(check),
-      (e) => live && setFolderError(t("offer.folderFailed", { reason: reasonOf(e) })),
+      (e) => live && setFolderError(saveFolderFailure(e)),
     );
     return () => {
       live = false;
@@ -195,6 +196,13 @@ function Offer({
         <Countdown expiresAt={offer.expiresAt} />
         {problems && (
           <div className="stack" id="offer-problems">
+            {/* The Receiver holds an Auto-accepted Offer back for the same checks of the save
+                folder (catalogue E6); a folder chosen here is not why it was held. */}
+            {blocked && folder === null && contact?.auto_accept && (
+              <Hint icon="info">
+                {t("offer.autoAcceptHeld", { peer: peerName(offer.peer, contacts, offer.peerName) })}
+              </Hint>
+            )}
             {short && (
               <Banner kind="err" role="alert">
                 {t(OFFER_WARNINGS.no_room[0], { needed: formatSize(short.needed), free: formatSize(short.free) })}

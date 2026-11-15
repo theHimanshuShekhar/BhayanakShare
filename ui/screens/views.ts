@@ -145,7 +145,7 @@ async function ended(device: Device) {
     }),
   );
   await device.push(transfer(11, "sender", { kind: "declined" }, who(MEERA), { name: "Recipe scans", items: ["Recipe scans"], file_count: 9, size: mib(31) }));
-  await device.push(transfer(12, "sender", { kind: "expired" }, who(MUM), { name: "Lecture slides.key", items: ["Lecture slides.key"], size: mib(86) }));
+  await device.push(transfer(12, "sender", { kind: "expired", restarted: null }, who(MUM), { name: "Lecture slides.key", items: ["Lecture slides.key"], size: mib(86) }));
   await device.push(transfer(13, "receiver", { kind: "cancelled", by: "sender" }, who(DAD), { name: "Holiday itinerary.docx", items: ["Holiday itinerary.docx"], size: mib(0.2), adjusted_names: 1 }));
 }
 
@@ -157,6 +157,16 @@ async function batch(device: Device) {
   await device.push(transfer(23, "sender", { kind: "declined" }, who(MUM), agenda));
   await device.push(transfer(24, "sender", { kind: "failed", reason: FAILURE_REASONS.unreachable }, who(MEERA), agenda));
   await device.push(transfer(25, "sender", { kind: "waiting" }, who(GUEST), agenda));
+}
+
+/** Offers lost to a restart: this Device's and the other's, sent and received (catalogue B9, B10). */
+async function lostToRestarts(device: Device) {
+  const slides = { name: "Lecture slides.key", items: ["Lecture slides.key"], size: mib(86) };
+  const itinerary = { name: "Holiday itinerary.docx", items: ["Holiday itinerary.docx"], size: mib(0.2) };
+  await device.push(transfer(41, "sender", { kind: "expired", restarted: "sender" }, who(MUM), slides));
+  await device.push(transfer(42, "sender", { kind: "expired", restarted: "receiver" }, who(MEERA), slides));
+  await device.push(transfer(43, "receiver", { kind: "expired", restarted: "sender" }, who(DAD), itinerary));
+  await device.push(transfer(44, "receiver", { kind: "expired", restarted: "receiver" }, who(ASHA), itinerary));
 }
 
 const mismatch = async (device: Device) => {
@@ -379,6 +389,17 @@ export const VIEWS: View[] = [
     },
   },
   {
+    id: "transfers-lost-to-restart",
+    group: "Transfer list",
+    title: "Offers lost to a restart: of this Device and of the other, sent and received",
+    ...withPeople,
+    setup: async (device) => {
+      await home(device);
+      await lostToRestarts(device);
+      await screen.findAllByText(/restarted BhayanakShare before you answered/);
+    },
+  },
+  {
     id: "transfers-version-mismatch",
     group: "Transfer list",
     title: "Version mismatch notices: this Device is older (Update now) and the other is",
@@ -536,11 +557,25 @@ export const VIEWS: View[] = [
     group: "Offer sheet",
     title: "Offer whose save folder could not be checked",
     ...withPeople,
-    overrides: { checkOffer: () => Promise.reject(new Error("The folder is on a drive that is not connected.")) },
+    overrides: {
+      checkOffer: () => Promise.reject({ kind: "not_connected", message: "the folder is on a drive that is not connected" }),
+    },
     setup: async (device) => {
       await offerOf(device);
       await offerDialog("Incoming files");
       await screen.findByText(/not connected/);
+    },
+  },
+  {
+    id: "offer-auto-accept-held",
+    group: "Offer sheet",
+    title: "Offer from a Contact with Auto-accept on, held back by a warning",
+    ...withPeople,
+    overrides: folder(mib(640)),
+    setup: async (device) => {
+      await device.push(transfer(30, "receiver", { kind: "offered" }, who(MUM), TRIP));
+      await offerDialog("Incoming files");
+      await screen.findByText(/Auto-accept is on for Mum/);
     },
   },
 
@@ -812,6 +847,23 @@ export const VIEWS: View[] = [
       await device.shell({ type: "send_files", paths: ["/home/priya/Pictures/IMG_2041.jpg"] });
       await button("Send to Asha's laptop");
       await screen.findByRole("button", { name: "Send" });
+    },
+  },
+  {
+    id: "dialog-send-too-big",
+    group: "Dialogs",
+    title: "Send to a Contact, refused: the Offer is too big to send",
+    ...withPeople,
+    overrides: {
+      sendFiles: () =>
+        Promise.reject({ kind: "too_big", message: "Too many files and folders: at most 500,000 can be sent at once." }),
+    },
+    setup: async (device) => {
+      await home(device);
+      await device.shell({ type: "send_files", paths: ["/home/priya/Pictures"] });
+      await button("Send to Asha's laptop");
+      await button("Send");
+      await screen.findByText(/This Offer is too big to send/);
     },
   },
   {

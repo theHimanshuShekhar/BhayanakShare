@@ -200,7 +200,7 @@ describe("accessibility: Home", () => {
     await device.push({ type: "progress", transfer_id: "2".repeat(32), bytes: 1024, total: 2048 });
     await row(device, 3, "receiver", { kind: "completed", saved_to: SAVED });
     await row(device, 4, "sender", { kind: "failed", reason: "The connection dropped." });
-    await row(device, 5, "sender", { kind: "expired" });
+    await row(device, 5, "sender", { kind: "expired", restarted: null });
     await row(device, 6, "receiver", { kind: "completed", saved_to: null }, { kind: "text", text: "hello", name: "", items: [] });
     await expectNoViolations();
   });

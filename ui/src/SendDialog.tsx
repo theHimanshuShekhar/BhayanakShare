@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { Api } from "./api";
 import { Banner, Hint } from "./Banner";
 import { t } from "./i18n";
+import { sendFailure } from "./sending";
 import { Sheet } from "./Sheet";
 import { parseShareLink } from "./shareLink";
 import { TextComposer, useFocusWhenLeft } from "./TextComposer";
@@ -61,7 +62,7 @@ export function SendDialog({
       }
       onClose();
     } catch (e) {
-      setError(t("send.failed", { reason: e instanceof Error ? e.message : String(e) }));
+      setError(sendFailure(e));
     } finally {
       setBusy(false);
     }

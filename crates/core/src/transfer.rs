@@ -183,8 +183,10 @@ pub enum TransferState {
     /// `saved_to` is set on the Receiver only.
     Completed { saved_to: Option<String> },
     Failed { reason: String },
-    /// Nobody answered the Offer within 10 minutes ([`OFFER_TTL_MS`]).
-    Expired,
+    /// Nobody answered the Offer within 10 minutes ([`OFFER_TTL_MS`]), or, when `restarted`
+    /// names a side, the Offer was lost because that Device restarted (or closed BhayanakShare)
+    /// before it was answered: a pending Offer does not survive a restart (spec section 4).
+    Expired { restarted: Option<Role> },
     /// One side stopped the Transfer before it completed; `by` is which.
     Cancelled { by: Role },
 }
@@ -202,18 +204,20 @@ impl TransferState {
             Self::Saving => "saving",
             Self::Completed { .. } => "completed",
             Self::Failed { .. } => "failed",
-            Self::Expired => "expired",
+            Self::Expired { .. } => "expired",
             Self::Cancelled { .. } => "cancelled",
         }
     }
 
     /// The detail columns stored next to the label: `(saved_to, error)`. A Cancelled
-    /// Transfer keeps who cancelled in the `error` column.
+    /// Transfer keeps who cancelled in the `error` column, and an Expired one which side
+    /// restarted, if one did.
     pub fn details(&self) -> (Option<&str>, Option<&str>) {
         match self {
             Self::Completed { saved_to } => (saved_to.as_deref(), None),
             Self::Failed { reason } => (None, Some(reason)),
             Self::Cancelled { by } => (None, Some(by.as_str())),
+            Self::Expired { restarted: Some(by) } => (None, Some(by.as_str())),
             _ => (None, None),
         }
     }
@@ -229,7 +233,8 @@ impl TransferState {
             "saving" => Self::Saving,
             "completed" => Self::Completed { saved_to },
             "failed" => Self::Failed { reason: error.unwrap_or_default() },
-            "expired" => Self::Expired,
+            // A record from before restarts were told apart has no side: a plain expiry.
+            "expired" => Self::Expired { restarted: error.and_then(|by| by.parse().ok()) },
             "cancelled" => Self::Cancelled { by: error?.parse().ok()? },
             _ => return None,
         })
@@ -250,7 +255,7 @@ impl TransferState {
             Self::Declined
                 | Self::Completed { .. }
                 | Self::Failed { .. }
-                | Self::Expired
+                | Self::Expired { .. }
                 | Self::Cancelled { .. }
         )
     }
@@ -299,7 +304,7 @@ mod tests {
             TransferState::Declined,
             TransferState::Completed { saved_to: None },
             TransferState::Failed { reason: "x".into() },
-            TransferState::Expired,
+            TransferState::Expired { restarted: None },
             TransferState::Cancelled { by: Role::Sender },
         ];
         assert!(progressing.iter().all(TransferState::is_in_progress));
@@ -315,7 +320,9 @@ mod tests {
             TransferState::Reconnecting,
             TransferState::Completed { saved_to: Some("/x/y".into()) },
             TransferState::Failed { reason: "nope".into() },
-            TransferState::Expired,
+            TransferState::Expired { restarted: None },
+            TransferState::Expired { restarted: Some(Role::Sender) },
+            TransferState::Expired { restarted: Some(Role::Receiver) },
             TransferState::Cancelled { by: Role::Sender },
             TransferState::Cancelled { by: Role::Receiver },
         ];

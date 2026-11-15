@@ -2,7 +2,7 @@
 
 use std::{fmt::Display, time::Duration};
 
-use iroh::endpoint::{Connection, SendStream};
+use iroh::endpoint::{Connection, ConnectionError, SendStream, VarInt};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -19,6 +19,26 @@ use crate::{
 /// How long to wait for the other side to close the connection after our last frame, so the
 /// frame is not cut off by us hanging up first.
 pub(crate) const CLOSE_GRACE: Duration = Duration::from_secs(5);
+
+/// The code a Device hangs up an unanswered Offer with when it is shutting down (a restart, a
+/// Quit, an update). A pending Offer does not survive that, and the other side records it as
+/// lost to a restart, not to the network. Any other close, including an older version's, is
+/// a lost connection, as before.
+const CLOSING: u32 = 1;
+
+/// Hangs up an unanswered Offer because this Device is shutting down (see [`CLOSING`]). The
+/// Transfer stays Offered in the database, and the next start records it as lost to the restart.
+pub(crate) fn hang_up_for_shutdown(conn: &Connection) {
+    conn.close(CLOSING.into(), b"closing");
+}
+
+/// Whether the other Device hung up because it was shutting down (see [`CLOSING`]).
+pub(crate) fn peer_shut_down(conn: &Connection) -> bool {
+    matches!(
+        conn.close_reason(),
+        Some(ConnectionError::ApplicationClosed(close)) if close.error_code == VarInt::from_u32(CLOSING)
+    )
+}
 
 /// Frames from the other Device, read on a task so they can be waited on with `select!`.
 pub(crate) type Incoming = mpsc::Receiver<Result<Message, FrameError>>;
@@ -140,6 +160,8 @@ pub(crate) enum Stop {
     Expired,
     /// The other Device sent `Expired`.
     PeerExpired,
+    /// The other Device shut down before the Offer was answered, which loses it.
+    PeerShutDown,
 }
 
 /// Records and announces how the Transfer ended and settles the connection: a Device that
@@ -159,8 +181,9 @@ pub(crate) async fn stop(
     let (state, tell) = match how {
         Stop::Cancelled => (TransferState::Cancelled { by: info.role }, Some(Message::Cancel)),
         Stop::PeerCancelled => (TransferState::Cancelled { by: peer }, None),
-        Stop::Expired => (TransferState::Expired, Some(Message::Expired)),
-        Stop::PeerExpired => (TransferState::Expired, None),
+        Stop::Expired => (TransferState::Expired { restarted: None }, Some(Message::Expired)),
+        Stop::PeerExpired => (TransferState::Expired { restarted: None }, None),
+        Stop::PeerShutDown => (TransferState::Expired { restarted: Some(peer) }, None),
     };
     sh.pending.lock().unwrap_or_else(|e| e.into_inner()).remove(&info.id);
     sh.untrack(info.id);

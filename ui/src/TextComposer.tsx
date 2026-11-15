@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Banner, Hint } from "./Banner";
 import { t } from "./i18n";
+import { sendFailure } from "./sending";
 
 /**
  * For the button that opens the composer: once the composer is left, its own buttons are gone
@@ -57,7 +58,7 @@ export function TextComposer({
       await send(text);
       onSent();
     } catch (e) {
-      setError(t("send.failed", { reason: e instanceof Error ? e.message : String(e) }));
+      setError(sendFailure(e));
     } finally {
       setBusy(false);
     }

@@ -185,6 +185,7 @@ const en = {
   "saveFolder.error.cannotCreate": "That folder does not exist and could not be created; choose another folder.",
   "saveFolder.error.notWritable": "BhayanakShare cannot write to that folder; choose one you have permission to write in.",
   "saveFolder.error.notText": "That folder's path contains characters BhayanakShare cannot use; choose another folder.",
+  "saveFolder.error.notConnected": "That folder is on a drive that is not connected; connect it or choose another folder.",
   "saveFolder.saved": "Saved. Files you receive from now on go there.",
 
   "updates.heading": "Updates",
@@ -300,6 +301,8 @@ const en = {
   "send.writeText": "Write text…",
   "send.cancel": "Cancel",
   "send.failed": "Could not start the Transfer ({reason}); try again.",
+  "send.tooBig":
+    "This Offer is too big to send: at most 500,000 files and folders, and paths up to 4,096 bytes; send fewer items or shorten the names.",
 
   "text.label": "Text",
   "text.hint": "Up to 64 KiB is sent as it is; longer text is sent as a file called text.txt.",
@@ -324,6 +327,7 @@ const en = {
   "offer.accept": "Accept",
   "offer.decline": "Decline",
   "offer.expiresIn": "Expires in {time}",
+  "offer.autoAcceptHeld": "Auto-accept is on for {peer}, but this Offer needs your answer because of the warnings below.",
   "offer.acceptBlocked": "Accept is not available until the problems above are solved.",
   "offer.failed": "Your answer did not reach {peer} ({reason}); try again.",
 
@@ -358,6 +362,11 @@ const en = {
   "transfer.receiving.declined": "You declined.",
   "transfer.receiving.completed": "Received.",
   "transfer.receiving.expired": "You did not answer within 10 minutes, so the Offer expired; ask {peer} to send it again.",
+  // An unanswered Offer does not survive a restart (catalogue B9, B10, and the two it implies).
+  "transfer.sending.lostToRestart": "This Device restarted before {peer} answered, so the Offer is gone; send it again.",
+  "transfer.sending.lostToPeerRestart": "{peer} restarted BhayanakShare before answering, so the Offer is gone; send it again.",
+  "transfer.receiving.lostToRestart": "This Device restarted before you answered, so the Offer is gone; ask {peer} to send it again.",
+  "transfer.receiving.lostToPeerRestart": "{peer} restarted BhayanakShare before you answered, so the Offer is gone; ask them to send it again.",
   // Why a Transfer failed (catalogue section 3): one sentence per cause, shown under "Failed".
   "transfer.failed": "Failed",
   "failure.unreachable": "{peer} could not be reached; check that it is online and running BhayanakShare, then try again.",

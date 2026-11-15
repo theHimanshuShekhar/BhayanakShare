@@ -11,7 +11,7 @@ use std::{
 };
 
 use bhayanakshare_core::{
-    BatchId, Error, HistoryEntry, HistoryQuery, HistoryTransfer, Role, TransferId, TransferKind,
+    BatchId, DeviceAddr, Error, HistoryEntry, HistoryQuery, HistoryTransfer, Role, TransferId, TransferKind,
     TransferState,
 };
 use support::TestDevice;
@@ -180,6 +180,7 @@ async fn history_lists_every_transfer_newest_first_with_what_each_side_knows_of_
 async fn how_a_transfer_ended_is_in_history_with_its_reason_and_who_cancelled() {
     let mut alice = TestDevice::start("alice").await;
     let mut bob = TestDevice::start("bob").await;
+    let mut carol = TestDevice::start("carol").await;
     let (_src, path) = source("a.txt", b"hello");
 
     // Cancelled by the Sender before the Receiver answered.
@@ -187,25 +188,30 @@ async fn how_a_transfer_ended_is_in_history_with_its_reason_and_who_cancelled() 
     bob.wait_offer().await;
     alice.device.cancel(by_alice).await.unwrap();
     bob.wait_state(by_alice, "cancelled").await;
-    // Failed: the Receiver's Device goes away before it answers.
-    let failed = alice.device.send_file(bob.addr(), &path).await.unwrap();
-    bob.wait_offer().await;
-    bob.shutdown().await;
+    // Failed: nothing can place Carol, known by her Device ID alone.
+    let failed = alice.device.send_file(DeviceAddr::from(carol.device.device_id()), &path).await.unwrap();
     alice.wait_state(failed, "failed").await;
+    // Lost: the Receiver's Device restarts before it answers, which a pending Offer does not survive.
+    let lost = alice.device.send_file(bob.addr(), &path).await.unwrap();
+    bob.wait_offer().await;
+    bob.restart().await;
+    let restarted = TransferState::Expired { restarted: Some(Role::Receiver) };
+    alice.wait_state(lost, "expired").await;
 
     let seen = everything(&alice).await;
-    assert_eq!(ids(&seen), [failed, by_alice]);
-    assert!(matches!(&one(&seen[0]).record.state, TransferState::Failed { reason } if !reason.is_empty()));
-    assert_eq!(one(&seen[1]).record.state, TransferState::Cancelled { by: Role::Sender });
-    // Bob was told of the cancelling, so it is the Sender's; the Offer that was never answered
-    // lapsed when he started again.
-    bob.restart().await;
+    assert_eq!(ids(&seen), [lost, failed, by_alice]);
+    assert_eq!(one(&seen[0]).record.state, restarted);
+    assert!(matches!(&one(&seen[1]).record.state, TransferState::Failed { reason } if !reason.is_empty()));
+    assert_eq!(one(&seen[2]).record.state, TransferState::Cancelled { by: Role::Sender });
+    // Bob was told of the cancelling, so it is the Sender's; the Offer he never answered was
+    // lost to his own restart.
     let seen = everything(&bob).await;
-    assert_eq!(ids(&seen), [failed, by_alice]);
-    assert_eq!(one(&seen[0]).record.state, TransferState::Expired);
+    assert_eq!(ids(&seen), [lost, by_alice]);
+    assert_eq!(one(&seen[0]).record.state, restarted);
     assert_eq!(one(&seen[1]).record.state, TransferState::Cancelled { by: Role::Sender });
     alice.shutdown().await;
     bob.shutdown().await;
+    carol.shutdown().await;
 }
 
 // ---- Batches and Devices ------------------------------------------------------------
@@ -387,15 +393,16 @@ async fn deleting_part_of_a_batch_leaves_the_rest_and_a_failed_transfer_can_stil
     let mut carol = TestDevice::start("carol").await;
     let mut dave = TestDevice::start("dave").await;
     let (_src, path) = source("report.txt", b"the same for everyone\n");
-    let batch = alice.device.send_batch(&[bob.addr(), carol.addr(), dave.addr()], &[path]).await.unwrap();
+    // Carol by her Device ID alone, which nothing places: her Transfer fails, unreachable.
+    let receivers = [bob.addr(), DeviceAddr::from(carol.device.device_id()), dave.addr()];
+    let batch = alice.device.send_batch(&receivers, &[path]).await.unwrap();
     let [to_bob, to_carol, to_dave] = batch.transfers[..] else { panic!("one Transfer per Receiver") };
-    for receiver in [&mut bob, &mut carol, &mut dave] {
+    for receiver in [&mut bob, &mut dave] {
         receiver.wait_offer().await;
     }
-    // Bob declines, Dave delivers, and Carol's Device goes away before she answers.
+    // Bob declines, Dave delivers, and Carol could not be reached.
     bob.device.decline(to_bob).await.unwrap();
     dave.device.accept(to_dave).await.unwrap();
-    carol.shutdown().await;
     alice.wait_state(to_bob, "declined").await;
     alice.wait_state(to_dave, "completed").await;
     alice.wait_state(to_carol, "failed").await;
@@ -407,7 +414,6 @@ async fn deleting_part_of_a_batch_leaves_the_rest_and_a_failed_transfer_can_stil
     assert_eq!(seen.len(), 1);
 
     // The Failed one can still be sent again, with what the Batch was made of.
-    carol.restart().await;
     alice.device.note_address(carol.addr());
     let again = alice.device.retry(to_carol).await.unwrap();
     carol.wait_offer().await;

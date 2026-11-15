@@ -231,7 +231,7 @@ export const HISTORY: HistoryEntry[] = [
     items: ["Lecture slides.key"],
     size: mib(86),
     created_at: ago(1_900),
-    state: { kind: "expired" },
+    state: { kind: "expired", restarted: null },
   }),
   row({
     id: transferId(15),

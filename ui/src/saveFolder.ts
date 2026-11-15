@@ -13,6 +13,7 @@ export const SAVE_FOLDER_ERRORS: Record<SaveFolderErrorKind, MessageKey> = {
   cannot_create: "saveFolder.error.cannotCreate",
   not_writable: "saveFolder.error.notWritable",
   not_text: "saveFolder.error.notText",
+  not_connected: "saveFolder.error.notConnected",
   other: "saveFolder.failed",
 };
 

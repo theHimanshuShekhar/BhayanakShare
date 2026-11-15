@@ -335,8 +335,8 @@ async fn an_unanswered_text_offer_expires_and_can_be_sent_again_with_the_same_te
 
     alice.clock.advance(OFFER_TTL_MS);
     bob.clock.advance(OFFER_TTL_MS);
-    assert_eq!(alice.wait_state(id, "expired").await.state, TransferState::Expired);
-    assert_eq!(bob.wait_state(id, "expired").await.state, TransferState::Expired);
+    assert_eq!(alice.wait_state(id, "expired").await.state, TransferState::Expired { restarted: None });
+    assert_eq!(bob.wait_state(id, "expired").await.state, TransferState::Expired { restarted: None });
     assert_eq!(bob.device.transfers().await.unwrap()[0].text, None, "never accepted, never kept");
 
     let again = alice.device.resend(id).await.unwrap();
@@ -358,10 +358,11 @@ async fn a_restart_before_the_answer_expires_a_text_offer_and_keeps_nothing() {
 
     // An unanswered Offer does not survive a restart (spec section 4), text or not.
     bob.restart().await;
+    let restarted = TransferState::Expired { restarted: Some(Role::Receiver) };
     let records = bob.device.transfers().await.unwrap();
-    assert_eq!((records[0].state.clone(), records[0].text.clone()), (TransferState::Expired, None));
-    // Alice's connection went with it, and there is no content to resume from.
-    alice.wait_state(id, "failed").await;
+    assert_eq!((records[0].state.clone(), records[0].text.clone()), (restarted.clone(), None));
+    // Alice is told it was lost to Bob's restart, and there is no content to resume from.
+    assert_eq!(alice.wait_state(id, "expired").await.state, restarted);
     assert!(matches!(bob.device.accept(id).await, Err(Error::UnknownTransfer(_))));
     alice.shutdown().await;
     bob.shutdown().await;
@@ -423,20 +424,19 @@ async fn a_failed_text_transfer_in_a_batch_can_be_retried_whether_the_text_is_in
         let mut alice = TestDevice::start("alice").await;
         let mut bob = TestDevice::start("bob").await;
         let mut carol = TestDevice::start("carol").await;
-        let batch = alice.device.send_text_batch(&[bob.addr(), carol.addr()], &text).await.unwrap();
+        // Carol by her Device ID alone, which nothing places: her Transfer fails, unreachable.
+        let receivers = [bob.addr(), DeviceAddr::from(carol.device.device_id())];
+        let batch = alice.device.send_text_batch(&receivers, &text).await.unwrap();
         let [to_bob, to_carol] = batch.transfers[..] else { panic!("one Transfer per Receiver") };
         bob.wait_offer().await;
-        carol.wait_offer().await;
 
-        // Bob takes it; Carol's Device goes away before she answers.
+        // Bob takes it; Carol could not be reached.
         bob.device.accept(to_bob).await.unwrap();
         bob.wait_state(to_bob, "completed").await;
-        carol.shutdown().await;
         alice.wait_state(to_carol, "failed").await;
 
         // Even after Alice's own restart, the Batch knows its text: for a file as for an inline one.
         alice.restart().await;
-        carol.restart().await;
         alice.device.note_address(carol.addr());
         let again = alice.device.retry(to_carol).await.unwrap();
 

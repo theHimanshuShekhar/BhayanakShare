@@ -313,8 +313,8 @@ async fn an_unanswered_offer_expires_on_both_sides_and_the_sender_can_send_it_ag
     alice.clock.advance(OFFER_TTL_MS);
     bob.clock.advance(OFFER_TTL_MS);
 
-    assert_eq!(alice.wait_state(id, "expired").await.state, TransferState::Expired);
-    assert_eq!(bob.wait_state(id, "expired").await.state, TransferState::Expired);
+    assert_eq!(alice.wait_state(id, "expired").await.state, TransferState::Expired { restarted: None });
+    assert_eq!(bob.wait_state(id, "expired").await.state, TransferState::Expired { restarted: None });
     assert!(matches!(bob.device.accept(id).await, Err(Error::UnknownTransfer(_))));
     assert!(matches!(bob.device.decline(id).await, Err(Error::UnknownTransfer(_))));
 
@@ -346,8 +346,8 @@ async fn whichever_side_expires_the_offer_first_the_other_shows_it_expired_too()
         // Only one Device's clock reaches the deadline; the other learns of it from the wire.
         if sender_first { &alice } else { &bob }.clock.advance(OFFER_TTL_MS);
 
-        assert_eq!(alice.wait_state(id, "expired").await.state, TransferState::Expired);
-        assert_eq!(bob.wait_state(id, "expired").await.state, TransferState::Expired);
+        assert_eq!(alice.wait_state(id, "expired").await.state, TransferState::Expired { restarted: None });
+        assert_eq!(bob.wait_state(id, "expired").await.state, TransferState::Expired { restarted: None });
         assert!(matches!(bob.device.accept(id).await, Err(Error::UnknownTransfer(_))));
         alice.shutdown().await;
         bob.shutdown().await;

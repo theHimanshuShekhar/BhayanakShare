@@ -315,6 +315,9 @@ impl Shared {
         // The probe is a blocking call into the operating system.
         let free = tokio::task::spawn_blocking(move || {
             if !dir.is_dir() {
+                if save_folder::on_missing_drive(&dir) {
+                    return Err(save_folder::SaveFolderProblem::NotConnected.into());
+                }
                 return Err(Error::NotAFolder(dir));
             }
             match probe.available(&dir) {
@@ -481,7 +484,8 @@ pub(crate) fn direct_addrs(endpoint: &Endpoint) -> Vec<SocketAddr> {
 
 /// Takes up the Transfers the last run left unfinished (spec section 4):
 ///
-/// - An Offer nobody answered does not survive a restart: it expires, on either side.
+/// - An Offer nobody answered does not survive a restart: it expires, on either side, as lost
+///   to this Device's restart.
 /// - An accepted Transfer carries on. A Sender whose content was hashed waits for the
 ///   Receiver to dial back; a Receiver that has its save folder redials the Sender. The 24
 ///   hours without progress count from the last progress made before the restart.
@@ -525,7 +529,7 @@ async fn recover(sh: &Arc<Shared>) -> Result<(), Error> {
         };
         if !resumed {
             let state = match record.state {
-                TransferState::Offered => TransferState::Expired,
+                TransferState::Offered => TransferState::Expired { restarted: Some(record.role) },
                 _ => TransferState::Failed { reason: RESTARTED.into() },
             };
             sh.db.update_transfer(record.id, state, sh.now()).await?;

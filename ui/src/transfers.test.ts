@@ -246,7 +246,7 @@ describe("expiry and cancelling", () => {
       { kind: "completed", saved_to: null },
       { kind: "failed", reason: "x" },
       { kind: "declined" },
-      { kind: "expired" },
+      { kind: "expired", restarted: null },
       { kind: "cancelled", by: "sender" },
     ] as const) {
       expect(canCancel(view("sender", state))).toBe(false);
@@ -254,8 +254,8 @@ describe("expiry and cancelling", () => {
   });
 
   it("offers to send again only an expired Offer on the Sender", () => {
-    expect(canResend(view("sender", { kind: "expired" }))).toBe(true);
-    expect(canResend(view("receiver", { kind: "expired" }))).toBe(false);
+    expect(canResend(view("sender", { kind: "expired", restarted: null }))).toBe(true);
+    expect(canResend(view("receiver", { kind: "expired", restarted: null }))).toBe(false);
     expect(canResend(view("sender", { kind: "declined" }))).toBe(false);
     expect(canResend(view("sender", { kind: "failed", reason: "x" }))).toBe(false);
   });
@@ -326,7 +326,7 @@ describe("Batches", () => {
     expect(batchStatus(only(batch(delivered, { kind: "transferring" }, { kind: "waiting" })))).toBe(
       "1 of 3 delivered, 2 in progress",
     );
-    expect(batchStatus(only(batch(failed, { kind: "cancelled", by: "sender" }, { kind: "expired" })))).toBe(
+    expect(batchStatus(only(batch(failed, { kind: "cancelled", by: "sender" }, { kind: "expired", restarted: null })))).toBe(
       "0 of 3 delivered, 1 failed, 1 cancelled, 1 expired",
     );
   });
@@ -336,7 +336,7 @@ describe("Batches", () => {
       run([transfer(0, state, { role: "sender", batch: BATCH })]).byId[ID];
     expect(canRetry(inBatch(failed))).toBe(true);
     expect(canRetry(inBatch({ kind: "declined" }))).toBe(false);
-    expect(canRetry(inBatch({ kind: "expired" }))).toBe(false);
+    expect(canRetry(inBatch({ kind: "expired", restarted: null }))).toBe(false);
     expect(canRetry(inBatch({ kind: "transferring" }))).toBe(false);
     // Not one sent on its own, and not a Receiver's.
     expect(canRetry(run([transfer(0, failed, { role: "sender" })]).byId[ID])).toBe(false);

@@ -14,6 +14,7 @@ import {
 } from "./history";
 import { Icon, type IconName } from "./Icon";
 import { t } from "./i18n";
+import { sendFailure } from "./sending";
 import { errorText } from "./TransferList";
 import { adjustedNamesText, batchStatus, formatSize, isOver, statusText, transferName } from "./transfers";
 import { useCopy } from "./useCopy";
@@ -406,7 +407,7 @@ function HistoryRow({
             aria-label={t("transfer.retryLabel", { name, peer })}
             onClick={() => {
               setProblem(null);
-              api.retryTransfer(x.id).catch((e) => setProblem(t("transfer.retryFailed", { reason: errorText(e) })));
+              api.retryTransfer(x.id).catch((e) => setProblem(sendFailure(e, "transfer.retryFailed")));
             }}
           >
             {t("transfer.retry")}

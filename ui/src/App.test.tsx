@@ -246,6 +246,14 @@ describe("sending", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
+  it("says what is too big to send, without the advice to try again", async () => {
+    const tooBig = { kind: "too_big", message: "Too many files and folders: at most 500,000 can be sent at once." };
+    const device = await start(fakeApi({ sendFiles: vi.fn(() => Promise.reject(tooBig)) }));
+    await sendPhoto(device);
+    expect((await screen.findByRole("alert")).textContent).toBe("This Offer is too big to send: at most 500,000 files and folders, and paths up to 4,096 bytes; send fewer items or shorten the names.");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("needs an ID before it will pick a file", async () => {
     await start();
     fireEvent.click(screen.getByRole("button", { name: "Send to ID…" }));
@@ -425,6 +433,71 @@ describe("receiving", () => {
     await device.transfer("receiver", { kind: "accepted" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("Accepted. Starting…")).toBeTruthy();
+  });
+
+  it("says why a Contact with Auto-accept on is asked, when a warning held the Offer back", async () => {
+    const tooLong = { folder: "/home/me/Downloads/BhayanakShare", needed: 1, free: 512, paths_too_long: true };
+    const device = await start(
+      fakeApi(
+        { checkOffer: vi.fn(() => Promise.resolve(tooLong)) },
+        [contact({ nickname: "Mum", auto_accept: true })],
+      ),
+    );
+    await device.transfer("receiver", { kind: "offered" });
+    expect(
+      await screen.findByText("Auto-accept is on for Mum, but this Offer needs your answer because of the warnings below."),
+    ).toBeTruthy();
+  });
+
+  it("does not mention Auto-accept when it is off, or when nothing held the Offer back", async () => {
+    const said = /Auto-accept is on/;
+    const tooLong = { folder: "/home/me/Downloads/BhayanakShare", needed: 1, free: 512, paths_too_long: true };
+    const off = await start(fakeApi({ checkOffer: vi.fn(() => Promise.resolve(tooLong)) }, [contact({ nickname: "Mum" })]));
+    await off.transfer("receiver", { kind: "offered" });
+    await screen.findByRole("alert");
+    expect(screen.queryByText(said)).toBeNull();
+    cleanup();
+
+    const fits = { ...tooLong, paths_too_long: false };
+    const on = await start(
+      fakeApi({ checkOffer: vi.fn(() => Promise.resolve(fits)) }, [contact({ nickname: "Mum", auto_accept: true })]),
+    );
+    await on.transfer("receiver", { kind: "offered" });
+    await screen.findByText("/home/me/Downloads/BhayanakShare");
+    expect(screen.queryByText(said)).toBeNull();
+  });
+
+  it("stops mentioning Auto-accept once another folder is chosen, which Auto-accept never checked", async () => {
+    const said = "Auto-accept is on for Mum, but this Offer needs your answer because of the warnings below.";
+    const check = (folder: string) => ({ folder, needed: 1, free: 512, paths_too_long: true });
+    const device = await start(
+      fakeApi(
+        {
+          checkOffer: vi.fn((_id: string, folder: string | null) =>
+            Promise.resolve(check(folder ?? "/home/me/Downloads/BhayanakShare")),
+          ),
+          pickFolder: vi.fn(() => Promise.resolve("/media/me/USB")),
+        },
+        [contact({ nickname: "Mum", auto_accept: true })],
+      ),
+    );
+    await device.transfer("receiver", { kind: "offered" });
+    await screen.findByText(said);
+
+    fireEvent.click(screen.getByRole("button", { name: "Change the save folder for this file" }));
+    await screen.findByText("/media/me/USB");
+    expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+    expect(screen.queryByText(said)).toBeNull();
+  });
+
+  it("says the save folder is on a drive that is not connected, and disables Accept", async () => {
+    const notConnected = { kind: "not_connected", message: "the folder is on a drive that is not connected" };
+    const device = await start(fakeApi({ checkOffer: vi.fn(() => Promise.reject(notConnected)) }));
+    await device.transfer("receiver", { kind: "offered" });
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "That folder is on a drive that is not connected; connect it or choose another folder.",
+    );
+    expect((screen.getByRole("button", { name: "Accept" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("shows how much is needed and disables Accept when the Offer does not fit", async () => {
@@ -688,7 +761,7 @@ describe("cancelling, expiry and the Offer countdown", () => {
   it("shows an expired Offer on both sides, with one-click resend for the Sender", async () => {
     const device = await start();
     await device.transfer("sender", { kind: "offered" });
-    await device.transfer("sender", { kind: "expired" });
+    await device.transfer("sender", { kind: "expired", restarted: null });
     expect(screen.getByText("K3QF-7XNA did not answer within 10 minutes, so the Offer expired; send it again to retry.")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Send again: photo.jpg" }));
@@ -702,21 +775,62 @@ describe("cancelling, expiry and the Offer countdown", () => {
     const device = await start();
     await device.transfer("receiver", { kind: "offered" });
     await screen.findByRole("dialog");
-    await device.transfer("receiver", { kind: "expired" });
+    await device.transfer("receiver", { kind: "expired", restarted: null });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("You did not answer within 10 minutes, so the Offer expired; ask K3QF-7XNA to send it again.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /again/ })).toBeNull();
+  });
+
+  it("says an Offer was lost to this Device's restart, without a one-click resend it cannot do", async () => {
+    const device = await start();
+    await device.transfer("sender", { kind: "expired", restarted: "sender" });
+    expect(screen.getByText("This Device restarted before K3QF-7XNA answered, so the Offer is gone; send it again.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /again/ })).toBeNull();
+  });
+
+  it("says an Offer was lost because the Receiver restarted, and the Sender can send it again", async () => {
+    const device = await start();
+    await device.transfer("sender", { kind: "expired", restarted: "receiver" });
+    expect(screen.getByText("K3QF-7XNA restarted BhayanakShare before answering, so the Offer is gone; send it again.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Send again: photo.jpg" })).toBeTruthy();
+  });
+
+  it("tells the Receiver an Offer was lost because the Sender restarted, and closes the sheet", async () => {
+    const device = await start();
+    await device.transfer("receiver", { kind: "offered" });
+    await screen.findByRole("dialog");
+    await device.transfer("receiver", { kind: "expired", restarted: "sender" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByText("K3QF-7XNA restarted BhayanakShare before you answered, so the Offer is gone; ask them to send it again."),
+    ).toBeTruthy();
+  });
+
+  it("tells the Receiver an Offer was lost to its own restart", async () => {
+    const device = await start();
+    await device.transfer("receiver", { kind: "expired", restarted: "receiver" });
+    expect(
+      screen.getByText("This Device restarted before you answered, so the Offer is gone; ask K3QF-7XNA to send it again."),
+    ).toBeTruthy();
   });
 
   it("says so when an Offer cannot be sent again", async () => {
     const device = await start(
       fakeApi({ resendTransfer: vi.fn(() => Promise.reject("/tmp/photo.jpg is not a file")) }),
     );
-    await device.transfer("sender", { kind: "expired" });
+    await device.transfer("sender", { kind: "expired", restarted: null });
     fireEvent.click(screen.getByRole("button", { name: "Send again: photo.jpg" }));
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("Could not start the Transfer again (");
     expect(alert.textContent).toContain("is not a file");
+  });
+
+  it("says an Offer that has grown past the limits is too big to send again", async () => {
+    const tooBig = { kind: "too_big", message: "Too many files and folders: at most 500,000 can be sent at once." };
+    const device = await start(fakeApi({ resendTransfer: vi.fn(() => Promise.reject(tooBig)) }));
+    await device.transfer("sender", { kind: "expired", restarted: null });
+    fireEvent.click(screen.getByRole("button", { name: "Send again: photo.jpg" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("This Offer is too big to send: at most 500,000 files and folders, and paths up to 4,096 bytes; send fewer items or shorten the names.");
   });
 
   it("shows the Sender that the Receiver was busy, as a failure with its reason", async () => {
@@ -2614,6 +2728,16 @@ describe("Batches", () => {
     expect(screen.getByText("2 Devices selected")).toBeTruthy();
   });
 
+  it("says a Batch is too big to send in the catalogue's words", async () => {
+    const sendBatch = vi.fn(() => Promise.reject({ kind: "too_big", message: "A path is longer than 4,096 bytes." }));
+    await start(fakeApi({ sendBatch }, contacts));
+    await screen.findByRole("button", { name: "Send to Mum" });
+    select("Mum");
+    select("Dad");
+    fireEvent.click(screen.getByRole("button", { name: "Choose files…" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("This Offer is too big to send: at most 500,000 files and folders, and paths up to 4,096 bytes; send fewer items or shorten the names.");
+  });
+
   it("offers files that are waiting to be sent to the selection, each as a Batch", async () => {
     const device = await start(fakeApi({}, contacts));
     await screen.findByRole("button", { name: "Send to Mum" });
@@ -2702,6 +2826,16 @@ describe("Batches", () => {
     fireEvent.click(screen.getByRole("button", { name: /Show each Device/ }));
     fireEvent.click(screen.getByRole("button", { name: "Retry photo.jpg to Mum" }));
     expect((await screen.findByRole("alert")).textContent).toContain("it has been retried already");
+  });
+
+  it("says a Batch that has grown past the limits is too big to retry", async () => {
+    const tooBig = { kind: "too_big", message: "Too many files and folders: at most 500,000 can be sent at once." };
+    const device = await start(fakeApi({ retryTransfer: vi.fn(() => Promise.reject(tooBig)) }, contacts));
+    await screen.findByRole("button", { name: "Send to Mum" });
+    await member(device, 1, MUM, { kind: "failed", reason: "x" });
+    fireEvent.click(screen.getByRole("button", { name: /Show each Device/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry photo.jpg to Mum" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("This Offer is too big to send: at most 500,000 files and folders, and paths up to 4,096 bytes; send fewer items or shorten the names.");
   });
 });
 

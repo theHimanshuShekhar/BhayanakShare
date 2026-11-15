@@ -41,7 +41,10 @@ export const commands = {
 	cancelBatch: (batchId: BatchId) => __TAURI_INVOKE<null>("cancel_batch", { batchId }),
 	/**  Sends a Failed Transfer of a Batch again, with a new Offer; resolves to the new Transfer ID. */
 	retryTransfer: (transferId: TransferId) => __TAURI_INVOKE<string>("retry_transfer", { transferId }),
-	/**  Whether a pending Offer fits in `folder` (the save folder when absent). */
+	/**
+	 *  Whether a pending Offer fits in `folder` (the save folder when absent). A folder that cannot
+	 *  be used says why, as choosing one does.
+	 */
 	checkOffer: (transferId: TransferId, folder: string | null) => __TAURI_INVOKE<SpaceCheck>("check_offer", { transferId, folder }),
 	/**  Accepts a pending Offer into `folder` for this Offer only (the save folder when absent). */
 	acceptOffer: (transferId: TransferId, folder: string | null) => __TAURI_INVOKE<null>("accept_offer", { transferId, folder }),
@@ -377,7 +380,23 @@ export type SaveFolderErrorKind =
 /**  Files cannot be written in it. */
 "not_writable" | 
 /**  The path is not text. */
-"not_text" | "other";
+"not_text" | 
+/**  It is on a drive that is not connected. */
+"not_connected" | "other";
+
+/**  Why files could not be offered, in the terms the UI words differently. */
+export type SendError = {
+	kind: SendErrorKind,
+	/**  For the kinds the UI has no wording of its own for. */
+	message: string,
+};
+
+export type SendErrorKind = 
+/**
+ *  What was chosen passes one of the Offer's limits: too many files and folders, too long a
+ *  list, a path over 4,096 bytes or a name over 255.
+ */
+"too_big" | "other";
 
 /**  What the shell tells the UI that is not a Device event. */
 export type ShellEvent = 
@@ -540,8 +559,12 @@ export type TransferState = { kind: "offered" } | { kind: "accepted" } | { kind:
 { kind: "saving" } | 
 /**  `saved_to` is set on the Receiver only. */
 { kind: "completed"; saved_to: string | null } | { kind: "failed"; reason: string } | 
-/**  Nobody answered the Offer within 10 minutes ([`OFFER_TTL_MS`]). */
-{ kind: "expired" } | 
+/**
+ *  Nobody answered the Offer within 10 minutes ([`OFFER_TTL_MS`]), or, when `restarted`
+ *  names a side, the Offer was lost because that Device restarted (or closed BhayanakShare)
+ *  before it was answered: a pending Offer does not survive a restart (spec section 4).
+ */
+{ kind: "expired"; restarted: Role | null } | 
 /**  One side stopped the Transfer before it completed; `by` is which. */
 { kind: "cancelled"; by: Role };
 

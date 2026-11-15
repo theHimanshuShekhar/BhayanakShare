@@ -165,9 +165,12 @@ export function isPreparing(view: TransferView): boolean {
   return view.state.kind === "accepted" || (view.state.kind === "offered" && view.role === "sender");
 }
 
-/** A Sender can send an Offer nobody answered again in one step. */
+/**
+ * A Sender can send an Offer nobody answered again in one step, unless this Device restarted
+ * since: what it was sending is not kept across a restart, so the user sends it afresh.
+ */
 export function canResend(view: TransferView): boolean {
-  return view.role === "sender" && view.state.kind === "expired";
+  return view.role === "sender" && view.state.kind === "expired" && view.state.restarted !== "sender";
 }
 
 /**
@@ -215,6 +218,15 @@ export const STATE_MESSAGES: Record<Role, Record<StateWording, MessageKey>> = {
   },
 };
 
+/**
+ * An Offer lost because a Device restarted before it was answered (catalogue B9 and B10), by the
+ * role showing it and whether that Device was this one or the other.
+ */
+export const RESTARTED_MESSAGES: Record<Role, Record<"this" | "other", MessageKey>> = {
+  sender: { this: "transfer.sending.lostToRestart", other: "transfer.sending.lostToPeerRestart" },
+  receiver: { this: "transfer.receiving.lostToRestart", other: "transfer.receiving.lostToPeerRestart" },
+};
+
 /** Who stopped a Transfer, as its row says it: this Device's user, or the other Device. */
 export const CANCELLED_MESSAGES: Record<"you" | "other", MessageKey> = {
   you: "transfer.cancelledByYou",
@@ -230,6 +242,9 @@ export function statusText(x: Pick<TransferView, "role" | "state">, peer: string
   if (x.state.kind === "failed") return failureMessage(x.state.reason, x.role, peer);
   if (x.state.kind === "cancelled") {
     return t(CANCELLED_MESSAGES[x.state.by === x.role ? "you" : "other"], { peer });
+  }
+  if (x.state.kind === "expired" && x.state.restarted !== null) {
+    return t(RESTARTED_MESSAGES[x.role][x.state.restarted === x.role ? "this" : "other"], { peer });
   }
   return t(STATE_MESSAGES[x.role][preparing ? "preparing" : x.state.kind], { peer });
 }

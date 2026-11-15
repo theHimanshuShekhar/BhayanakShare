@@ -136,7 +136,7 @@ describe("announcements: what a state change says", () => {
       play([transfer({ kind: "offered" }, { role: "sender" }), transfer(state, { role: "sender" })]).said[1];
     expect(sent({ kind: "declined" })).toEqual(["photo.jpg to Mum: Mum declined."]);
     expect(sent({ kind: "cancelled", by: "receiver" })).toEqual(["photo.jpg to Mum: Mum cancelled."]);
-    expect(sent({ kind: "expired" })).toEqual(["photo.jpg to Mum: Mum did not answer within 10 minutes, so the Offer expired; send it again to retry."]);
+    expect(sent({ kind: "expired", restarted: null })).toEqual(["photo.jpg to Mum: Mum did not answer within 10 minutes, so the Offer expired; send it again to retry."]);
   });
 
   it("says Preparing, and that the Receiver lost contact", () => {

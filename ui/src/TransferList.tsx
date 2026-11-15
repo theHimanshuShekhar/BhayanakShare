@@ -4,6 +4,7 @@ import { peerName } from "./contacts";
 import { Icon, type IconName } from "./Icon";
 import { t } from "./i18n";
 import { PlainText } from "./PlainText";
+import { sendFailure } from "./sending";
 import { useCopy } from "./useCopy";
 import {
   adjustedNamesText,
@@ -242,7 +243,7 @@ function TransferRow({
                 setProblem(null);
                 api.resendTransfer(x.id).then(
                   () => setResent(true),
-                  (e) => setProblem(t("transfer.resendFailed", { reason: errorText(e) })),
+                  (e) => setProblem(sendFailure(e, "transfer.resendFailed")),
                 );
               }}
             >
@@ -259,7 +260,7 @@ function TransferRow({
                 // in the Batch.
                 api
                   .retryTransfer(x.id)
-                  .catch((e) => setProblem(t("transfer.retryFailed", { reason: errorText(e) })));
+                  .catch((e) => setProblem(sendFailure(e, "transfer.retryFailed")));
               }}
             >
               {t("transfer.retry")}

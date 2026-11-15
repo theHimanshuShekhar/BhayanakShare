@@ -173,7 +173,10 @@ fn a_declined_offer_and_bad_input_are_reported_to_the_ui() {
     assert!(again.unwrap_err().as_str().unwrap().contains("no pending Offer"));
     assert!(bob.invoke("accept_offer", json!({ "transferId": "nope" })).is_err());
     let bad = alice.invoke("send_files", json!({ "to": "not an id", "paths": ["/tmp/x"] }));
-    assert!(bad.unwrap_err().as_str().unwrap().contains("52 characters"));
+    // A refused send says which kind it is, so the UI can word one over the limits its own way.
+    let bad = bad.unwrap_err();
+    assert_eq!(bad["kind"], "other");
+    assert!(bad["message"].as_str().unwrap().contains("52 characters"));
 
     for shell in [&alice, &bob] {
         tauri::async_runtime::block_on(shell.device().shutdown(Duration::from_secs(30)));
@@ -205,7 +208,7 @@ fn cancelling_goes_through_the_commands_and_the_other_ui_hears_who_cancelled() {
     let again = alice.invoke("cancel_transfer", json!({ "transferId": offer["transfer_id"] }));
     assert!(again.unwrap_err().as_str().unwrap().contains("not running"));
     let resend = alice.invoke("resend_transfer", json!({ "transferId": offer["transfer_id"] }));
-    assert!(resend.unwrap_err().as_str().unwrap().contains("did not expire"));
+    assert!(resend.unwrap_err()["message"].as_str().unwrap().contains("did not expire"));
 
     for shell in [&alice, &bob] {
         tauri::async_runtime::block_on(shell.device().shutdown(Duration::from_secs(30)));

@@ -10,6 +10,7 @@ import type {
   IdentityErrorKind,
   Role,
   SaveFolderErrorKind,
+  SendErrorKind,
   TransferState,
   UnavailableReason,
   UpdateError,
@@ -27,6 +28,7 @@ import { hasMessage, t, type MessageKey } from "./i18n";
 import { identityFailure, IDENTITY_ERRORS } from "./identity";
 import { DISCOVERY_MESSAGES, NEARBY_HINTS, discoveryHint } from "./nearby";
 import { SAVE_FOLDER_ERRORS, saveFolderFailure } from "./saveFolder";
+import { SEND_ERRORS, sendFailure } from "./sending";
 import {
   CANCELLED_MESSAGES,
   OFFER_WARNINGS,
@@ -68,6 +70,8 @@ function stateOf(kind: TransferState["kind"], role: Role): TransferState {
       return { kind, reason: FAILURE_REASONS.lost };
     case "cancelled":
       return { kind, by: role };
+    case "expired":
+      return { kind, restarted: null };
     default:
       return { kind };
   }
@@ -104,6 +108,17 @@ describe("Transfer states", () => {
       const them = statusText({ role, state: { kind: "cancelled", by: other } }, "Mum");
       expect(you).toBe("You cancelled.");
       expect(them).toBe("Mum cancelled.");
+    }
+  });
+
+  it("says an Offer lost to a restart in words of its own, for each side that restarted", () => {
+    for (const role of ROLES) {
+      for (const restarted of ROLES) {
+        const sentence = statusText({ role, state: { kind: "expired", restarted } }, "Mum");
+        expectWhole(sentence);
+        expect(sentence).toContain("restarted");
+        expect(sentence).not.toBe(statusText({ role, state: { kind: "expired", restarted: null } }, "Mum"));
+      }
     }
   });
 
@@ -257,7 +272,15 @@ describe("warnings", () => {
 
   it("words every reason a folder is refused (F1 to F7)", () => {
     const kinds = Object.keys(SAVE_FOLDER_ERRORS) as SaveFolderErrorKind[];
-    expect(kinds.sort()).toEqual(["cannot_create", "not_a_folder", "not_absolute", "not_text", "not_writable", "other"]);
+    expect(kinds.sort()).toEqual([
+      "cannot_create",
+      "not_a_folder",
+      "not_absolute",
+      "not_connected",
+      "not_text",
+      "not_writable",
+      "other",
+    ]);
     const said = new Set<string>();
     for (const kind of kinds) {
       expect(hasMessage(SAVE_FOLDER_ERRORS[kind])).toBe(true);
@@ -267,6 +290,17 @@ describe("warnings", () => {
     }
     expect(said.size).toBe(kinds.length);
     expect(saveFolderFailure({ kind: "other", message: "the Device said so" })).toContain("(the Device said so)");
+  });
+
+  it("words a send over the Offer's limits (C8) apart from any other refused send", () => {
+    const kinds = Object.keys(SEND_ERRORS) as SendErrorKind[];
+    expect(kinds.sort()).toEqual(["other", "too_big"]);
+    for (const kind of kinds) {
+      expect(hasMessage(SEND_ERRORS[kind])).toBe(true);
+      expectWhole(sendFailure({ kind, message: "the Device said so" }));
+    }
+    expect(sendFailure({ kind: "too_big", message: "the Device said so" })).not.toContain("the Device said so");
+    expect(sendFailure({ kind: "other", message: "the Device said so" })).toContain("(the Device said so)");
   });
 
   it("words every reason an update was not installed (G7 to G14), and a check that failed", () => {

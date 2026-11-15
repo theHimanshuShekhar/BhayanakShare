@@ -65,8 +65,8 @@ use crate::{
         INVALID_NAMES, LOST, STALLED, UNEXPECTED, UNREACHABLE,
     },
     session::{
-        CLOSE_GRACE, Failure, HelloError, Session, Stall, Stop, expect_hello, fail, made_progress, save_progress,
-        stop,
+        CLOSE_GRACE, Failure, HelloError, Session, Stall, Stop, expect_hello, fail, hang_up_for_shutdown,
+        made_progress, peer_shut_down, save_progress, stop,
     },
     transfer::{Role, STALL_TTL_MS, TransferId, TransferState},
 };
@@ -259,8 +259,11 @@ pub(crate) async fn run(
     cancel: CancellationToken,
 ) {
     let outcome = tokio::select! {
-        () = sh.cancel.cancelled() => None,
+        // The flow first: an unanswered Offer hangs up for the shutdown itself (see
+        // `hang_up_for_shutdown`), and that has to happen before the flow is dropped.
+        biased;
         outcome = flow(&sh, &info, &to, &out, &cancel) => Some(outcome),
+        () = sh.cancel.cancelled() => None,
     };
     sh.untrack(info.id);
     if let Some(Err(Failure(reason))) = outcome {
@@ -425,6 +428,11 @@ async fn flow(
                     return Err(Failure::with(INVALID_NAMES, "the Receiver refused the manifest"));
                 }
                 Some(Ok(_)) => return Err(Failure::with(UNEXPECTED, "out-of-order message")),
+                Some(Err(_)) | None if !accepted && peer_shut_down(&session.conn) => {
+                    lapse(sh, info, to, out.payload());
+                    stop(sh, info, None, Stop::PeerShutDown).await;
+                    return Ok(());
+                }
                 Some(Err(e)) => return Err(Failure::with(LOST, e)),
                 None => return Err(Failure::with(LOST, "stream ended")),
             },
@@ -435,6 +443,11 @@ async fn flow(
             () = &mut expiry, if !accepted => {
                 lapse(sh, info, to, out.payload());
                 stop(sh, info, Some(&mut session), Stop::Expired).await;
+                return Ok(());
+            }
+            // Still Offered in the database: the next start records it as lost to the restart.
+            () = sh.cancel.cancelled(), if !accepted => {
+                hang_up_for_shutdown(&session.conn);
                 return Ok(());
             }
             done = async { hashing.as_mut().expect("guarded by the if below").await },

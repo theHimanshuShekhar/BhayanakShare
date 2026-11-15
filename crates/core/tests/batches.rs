@@ -417,19 +417,19 @@ async fn a_failed_transfer_can_be_retried_in_its_batch_and_a_declined_one_cannot
     let (_src, path) = source("report.txt", b"the same for everyone\n");
     let batch = alice
         .device
-        .send_batch(&[bob.addr(), carol.addr(), dave.addr()], &[path])
+        // Carol by her Device ID alone, which nothing places: her Transfer fails, unreachable.
+        .send_batch(&[bob.addr(), DeviceAddr::from(carol.device.device_id()), dave.addr()], &[path])
         .await
         .unwrap();
     let [to_bob, to_carol, to_dave] = batch.transfers[..] else { panic!("one Transfer per Receiver") };
-    for receiver in [&mut bob, &mut carol, &mut dave] {
+    for receiver in [&mut bob, &mut dave] {
         receiver.wait_offer().await;
     }
 
-    // Bob declines, Dave delivers, and Carol's Device goes away before she answers.
+    // Bob declines, Dave delivers, and Carol could not be reached.
     bob.device.decline(to_bob).await.unwrap();
     dave.device.accept(to_dave).await.unwrap();
     dave.wait_state(to_dave, "completed").await;
-    carol.shutdown().await;
     alice.wait_state(to_bob, "declined").await;
     alice.wait_state(to_dave, "completed").await;
     let failed = alice.wait_state(to_carol, "failed").await;
@@ -447,7 +447,6 @@ async fn a_failed_transfer_can_be_retried_in_its_batch_and_a_declined_one_cannot
     // Even after Alice's own restart: what the Batch sent is on disk. Carol is found again by
     // the address she is told to be at.
     alice.restart().await;
-    carol.restart().await;
     alice.device.note_address(carol.addr());
     let again = alice.device.retry(to_carol).await.unwrap();
     assert_ne!(again, to_carol, "a new Offer is a new Transfer");

@@ -1312,7 +1312,7 @@ mod tests {
             TransferState::Saving,
             TransferState::Completed { saved_to: None },
             TransferState::Failed { reason: "x".into() },
-            TransferState::Expired,
+            TransferState::Expired { restarted: None },
             TransferState::Cancelled { by: Role::Receiver },
         ];
         for (i, state) in states.iter().enumerate() {
