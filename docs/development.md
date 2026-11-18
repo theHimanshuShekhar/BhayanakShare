@@ -71,7 +71,7 @@ Which bundles each platform builds is set in `src-tauri/tauri.linux.conf.json` a
 
 The icons (`src-tauri/icons/`) and the brand files they come from (`assets/`) are described in [`assets/brand/README.md`](../assets/brand/README.md), with how to regenerate them. The window and installer icon is `icon.ico` on Windows and the PNGs in `bundle.icon` on Linux; the tray draws a flat white glyph (`icons/tray/`), picked by display scale. A test in `src-tauri/src/updates.rs` checks that the icon set is complete for both platforms.
 
-Each beta and 1.0 must pass the [release checklist](release-checklist.md): the manual gate, run on one Windows 11 PC and one Linux PC on the same LAN, with their firewalls on.
+Each beta and 1.0 must pass the [release checklist](release-checklist.md): the manual gate, run on one Windows 11 PC with its firewall on. The Linux rows are out of the gate for now, because there is no Linux desktop to run them on, so each release records them as waived and the README says the packages are unverified.
 
 The release workflow is the one that sees the signing key, so its actions are pinned to commits (the tag is in a comment beside each), it caches nothing, and only the build job (both of its legs) has write permission. Update the pins by hand, checking the new tag.
 

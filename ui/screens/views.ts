@@ -5,7 +5,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/dom";
 import type { Api, Contact, HistoryEntry } from "../src/api";
 import { FAILURE_REASONS } from "../src/failureReasons";
-import { NEARBY_WAIT_MS } from "../src/nearby";
+import { NEARBY_SETTLE_MS } from "../src/nearby";
 import { fakeApi } from "../src/testApi";
 import {
   ASHA,
@@ -230,7 +230,7 @@ const refuseCamera = () =>
 const skipNearbyWait = () => {
   const setTimeoutOnce = window.setTimeout.bind(window);
   window.setTimeout = ((handler: TimerHandler, delay?: number, ...args: unknown[]) =>
-    setTimeoutOnce(handler, delay === NEARBY_WAIT_MS ? 50 : delay, ...args)) as typeof window.setTimeout;
+    setTimeoutOnce(handler, delay === NEARBY_SETTLE_MS ? 50 : delay, ...args)) as typeof window.setTimeout;
 };
 
 // ---- The views ------------------------------------------------------------------------------

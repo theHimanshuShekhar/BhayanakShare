@@ -17,8 +17,8 @@ const en = {
   "home.nearby": "Nearby",
   "home.saveAsContact": "Save as Contact…",
   "home.saveAsContactLabel": "Save as Contact: {name}",
-  "home.firewallHint":
-    "No Devices found on this network yet; if you expect some, a firewall may be blocking local discovery.",
+  "home.noOneNearby": "No one else is running BhayanakShare on this network right now.",
+  "home.notSeeing": "Not seeing a device you expect?",
   "home.firewallDocs": "How to allow local discovery",
   "home.discoveryPort": "Nearby Devices can't be found because another program is using UDP port 5353 or security software blocked it; close that program or allow BhayanakShare, which keeps trying.",
   "home.discoveryPortHidden": "People who have your ID can't find this Device on the network because another program is using UDP port 5353 or security software blocked it; close that program or allow BhayanakShare, which keeps trying.",

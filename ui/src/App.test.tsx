@@ -4,7 +4,7 @@ import { App } from "./App";
 import "./heavyTests";
 import type { Api, DiscoveryStatus, UpdateAction } from "./api";
 import type { HistoryEntry, TransferRecord, TransferState } from "./bindings";
-import { NEARBY_WAIT_MS } from "./nearby";
+import { NEARBY_SETTLE_MS } from "./nearby";
 import { BATCH, EXPIRES_AT, MY_ID, PEER_ID, TRANSFER, contact, fakeApi } from "./testApi";
 
 // The camera cannot be tested here (QrScanner.test.tsx covers how it is read): this stand-in
@@ -1383,12 +1383,12 @@ describe("share links, QR codes and deep links", () => {
   });
 });
 
-describe("the firewall hint", () => {
-  const HINT = /No Devices found on this network yet/;
+describe("the empty state", () => {
+  const EMPTY = /No one else is running BhayanakShare on this network right now/;
   const DOCS = "https://github.com/theHimanshuShekhar/bhayanakshare/blob/main/docs/firewall.md";
 
   /**
-   * Takes over the 30-second wait and leaves every other timer real (a fake clock would also
+   * Takes over the short settle and leaves every other timer real (a fake clock would also
    * freeze the ones Testing Library waits on). `elapse` lets the wait run out; `delays` are the
    * waits the app asked for.
    */
@@ -1396,14 +1396,20 @@ describe("the firewall hint", () => {
     const real = globalThis.setTimeout;
     const delays: number[] = [];
     let fire = () => {};
+    let armed = false;
     vi.spyOn(globalThis, "setTimeout").mockImplementation(((
       fn: () => void,
       ms?: number,
       ...args: unknown[]
     ) => {
-      if (ms !== NEARBY_WAIT_MS) return real(fn, ms, ...args);
+      if (ms !== NEARBY_SETTLE_MS) return real(fn, ms, ...args);
       delays.push(ms);
-      fire = fn;
+      // Only the first is the settle; Testing Library waits on the same delay for its own
+      // timeouts, and elapsing one of those instead would test nothing.
+      if (!armed) {
+        armed = true;
+        fire = fn;
+      }
       return 0;
     }) as unknown as typeof setTimeout);
     return { delays, elapse: () => act(() => fire()) };
@@ -1411,15 +1417,18 @@ describe("the firewall hint", () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("appears once the 30-second wait is over with nobody Nearby, and links to the docs", async () => {
+  it("appears once the short wait is over with nobody Nearby, states it plainly, and links to the docs", async () => {
     const wait = holdTheWait();
     const device = await start();
-    expect(wait.delays).toEqual([30_000]);
-    expect(screen.queryByText(HINT)).toBeNull();
+    expect(wait.delays[0]).toBe(5_000);
+    expect(screen.queryByText(EMPTY)).toBeNull();
     await wait.elapse();
-    expect(screen.getByText(HINT)).toBeTruthy();
+    // A statement, not a warning: it is not a live region and not a banner.
+    const sentence = screen.getByText(EMPTY);
+    expect(sentence.closest("[role=status]")).toBeNull();
+    expect(sentence.closest(".banner, [class*=warn]")).toBeNull();
 
-    const link = screen.getByRole("link", { name: "How to allow local discovery" });
+    const link = screen.getByRole("link", { name: "Not seeing a device you expect?" });
     expect(link.getAttribute("href")).toBe(DOCS);
     fireEvent.click(link);
     // Opened in the browser, not in the app's own window.
@@ -1431,23 +1440,23 @@ describe("the firewall hint", () => {
     const device = await start();
     await device.nearby({ id: PEER_ID, name: "Dad's PC" });
     await wait.elapse();
-    expect(screen.queryByText(HINT)).toBeNull();
+    expect(screen.queryByText(EMPTY)).toBeNull();
   });
 
   it("goes away when a Device turns up, and comes back if they all leave", async () => {
     const wait = holdTheWait();
     const device = await start();
     await wait.elapse();
-    expect(screen.getByText(HINT)).toBeTruthy();
+    expect(screen.getByText(EMPTY)).toBeTruthy();
     await device.nearby({ id: PEER_ID, name: "Dad's PC" });
-    expect(screen.queryByText(HINT)).toBeNull();
+    expect(screen.queryByText(EMPTY)).toBeNull();
     await device.nearby();
-    expect(screen.getByText(HINT)).toBeTruthy();
+    expect(screen.getByText(EMPTY)).toBeTruthy();
   });
 });
 
 describe("the hint that local discovery could not start", () => {
-  const FIREWALL = /No Devices found on this network yet/;
+  const EMPTY = /No one else is running BhayanakShare on this network right now/;
   const HIDDEN = "You're Hidden, so Nearby Devices aren't shown.";
   const DOCS =
     "https://github.com/theHimanshuShekhar/bhayanakshare/blob/main/docs/firewall.md#when-home-says-local-discovery-could-not-start";
@@ -1460,11 +1469,20 @@ describe("the hint that local discovery could not start", () => {
   /** Lets the 30-second wait run out at once, as the firewall hint's tests do. */
   function skipTheWait() {
     const real = globalThis.setTimeout;
+    // Only the settle fires at once; Testing Library waits on the same delay for its own
+    // timeouts, and zeroing those would make its assertions race.
+    let armed = true;
     vi.spyOn(globalThis, "setTimeout").mockImplementation(((
       fn: () => void,
       ms?: number,
       ...args: unknown[]
-    ) => real(fn, ms === NEARBY_WAIT_MS ? 0 : ms, ...args)) as unknown as typeof setTimeout);
+    ) => {
+      if (armed && ms === NEARBY_SETTLE_MS) {
+        armed = false;
+        return real(fn, 0, ...args);
+      }
+      return real(fn, ms, ...args);
+    }) as unknown as typeof setTimeout);
   }
 
   afterEach(() => vi.restoreAllMocks());
@@ -1541,27 +1559,27 @@ describe("the hint that local discovery could not start", () => {
     expect(screen.getByText(DOWN, { exact: false })).toBeTruthy();
   });
 
-  it("replaces the firewall hint, which says nothing of why", async () => {
+  it("takes the place of the empty state, because a known fault outranks a quiet network", async () => {
     skipTheWait();
     const device = await start();
-    expect(await screen.findByText(FIREWALL)).toBeTruthy();
+    expect(await screen.findByText(EMPTY)).toBeTruthy();
     await device.discoveryChanges(PORT_IN_USE);
-    expect(screen.queryByText(FIREWALL)).toBeNull();
+    // Only one of the two at a time, and the one that knows why wins.
+    expect(screen.queryByText(EMPTY)).toBeNull();
     expect(screen.getAllByRole("link", { name: "How to allow local discovery" })).toHaveLength(1);
-    // And gives it back, once the wait is over, if the status recovers with nobody Nearby.
     await device.discoveryChanges(WORKING);
-    expect(await screen.findByText(FIREWALL)).toBeTruthy();
+    expect(await screen.findByText(EMPTY)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "How to allow local discovery" })).toBeNull();
   });
 
-  it("is announced the way the firewall hint is: as one status, not a second live region", async () => {
+  it("is the one thing announced as a status: the empty state never is", async () => {
     skipTheWait();
     const device = await start();
-    await screen.findByText(FIREWALL);
-    const before = screen.getAllByRole("status").filter((el) => el.textContent !== "").length;
+    const empty = await screen.findByText(EMPTY);
+    expect(empty.closest("[role=status]")).toBeNull();
     await device.discoveryChanges(PORT_IN_USE);
     const hint = screen.getByText(DOWN, { exact: false });
     expect(hint.closest("[role=status]")).not.toBeNull();
-    expect(screen.getAllByRole("status").filter((el) => el.textContent !== "").length).toBe(before);
   });
 
   it("is not shown while a Device is Nearby, as the other hints are not", async () => {
@@ -1591,56 +1609,65 @@ describe("the hint that local discovery could not start", () => {
 });
 
 describe("the Hidden hint", () => {
-  const FIREWALL = /No Devices found on this network yet/;
+  const EMPTY = /No one else is running BhayanakShare on this network right now/;
   const HIDDEN = "You're Hidden, so Nearby Devices aren't shown.";
 
   /** Lets the 30-second wait run out at once, as the firewall hint's tests do. */
   function skipTheWait() {
     const real = globalThis.setTimeout;
+    // Only the settle fires at once; Testing Library waits on the same delay for its own
+    // timeouts, and zeroing those would make its assertions race.
+    let armed = true;
     vi.spyOn(globalThis, "setTimeout").mockImplementation(((
       fn: () => void,
       ms?: number,
       ...args: unknown[]
-    ) => real(fn, ms === NEARBY_WAIT_MS ? 0 : ms, ...args)) as unknown as typeof setTimeout);
+    ) => {
+      if (armed && ms === NEARBY_SETTLE_MS) {
+        armed = false;
+        return real(fn, 0, ...args);
+      }
+      return real(fn, ms, ...args);
+    }) as unknown as typeof setTimeout);
   }
 
   afterEach(() => vi.restoreAllMocks());
 
-  it("replaces the firewall hint on a Hidden Device, which never lists anyone", async () => {
+  it("replaces the empty state on a Hidden Device, which never lists anyone", async () => {
     skipTheWait();
     const device = fakeApi();
     await device.api.setVisibility("hidden");
     await start(device);
     expect(await screen.findByText(HIDDEN)).toBeTruthy();
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.queryByText(FIREWALL)).toBeNull();
+    expect(screen.queryByText(EMPTY)).toBeNull();
   });
 
-  it("is not shown at the other settings, which keep the firewall hint", async () => {
+  it("is not shown at the other settings, which keep the empty state", async () => {
     skipTheWait();
     await start();
-    expect(await screen.findByText(FIREWALL)).toBeTruthy();
+    expect(await screen.findByText(EMPTY)).toBeTruthy();
     expect(screen.queryByText(HIDDEN)).toBeNull();
   });
 
   it("follows the setting when it is changed, and leads to it", async () => {
     skipTheWait();
     const device = await start();
-    expect(await screen.findByText(FIREWALL)).toBeTruthy();
+    expect(await screen.findByText(EMPTY)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     fireEvent.click(await screen.findByRole("radio", { name: "Hidden" }));
     await waitFor(() => expect(device.api.setVisibility).toHaveBeenCalledWith("hidden"));
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
     expect(await screen.findByText(HIDDEN)).toBeTruthy();
-    expect(screen.queryByText(FIREWALL)).toBeNull();
+    expect(screen.queryByText(EMPTY)).toBeNull();
 
     // The button goes to the setting.
     fireEvent.click(screen.getByRole("button", { name: "Change Visibility" }));
     fireEvent.click(await screen.findByRole("radio", { name: "Everyone" }));
     await waitFor(() => expect(device.api.setVisibility).toHaveBeenCalledWith("everyone"));
     fireEvent.click(screen.getByRole("button", { name: "Home" }));
-    expect(await screen.findByText(FIREWALL)).toBeTruthy();
+    expect(await screen.findByText(EMPTY)).toBeTruthy();
     expect(screen.queryByText(HIDDEN)).toBeNull();
   });
 });

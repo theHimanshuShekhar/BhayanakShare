@@ -5,8 +5,9 @@ import type { Contact, DeviceEvent, DiscoveryStatus, NearbyDevice, UnavailableRe
 import { findContact } from "./contacts";
 import type { MessageKey } from "./i18n";
 
-/** How long Home waits for a Nearby Device before it suggests the firewall may be in the way. */
-export const NEARBY_WAIT_MS = 30_000;
+/** How long Home waits for a Nearby Device before it says that nobody else is here. Short, so
+ * that the sentence is not read as a verdict on a network that is still answering. */
+export const NEARBY_SETTLE_MS = 5_000;
 
 /** The page that explains how to allow local discovery through a firewall. */
 export const FIREWALL_DOCS_URL =
@@ -37,10 +38,11 @@ export function settleDiscovery(current: DiscoveryStatus, next: DiscoveryStatus)
   return same ? current : next;
 }
 
-/** The hints Home gives about Nearby Devices that are not for a fault: the message of each (H6, H7). */
+/** What Home says when a Nearby Device is not there. Neither is a fault: the first is a statement
+ * of fact, the second a state the user chose. Amber is kept for discovered faults alone. */
 export const NEARBY_HINTS = {
-  /** Nobody Nearby after a while: a firewall may be in the way. */
-  firewall: "home.firewallHint",
+  /** Nobody Nearby after the settle: nobody else is running BhayanakShare here. */
+  empty: "home.noOneNearby",
   /** Hidden, so no Nearby Devices are shown. */
   hidden: "home.hiddenHint",
 } as const satisfies Record<string, MessageKey>;
