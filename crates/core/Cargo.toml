@@ -49,7 +49,7 @@ tracing = "0.1"
 # Wipes secret key material when it is dropped.
 zeroize = "1"
 # The diagnostics export (logs.rs): a zip of the log files, deflated, and nothing else.
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

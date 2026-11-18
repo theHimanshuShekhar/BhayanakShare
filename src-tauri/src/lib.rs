@@ -1096,7 +1096,7 @@ mod tests {
         zip.by_name("about.txt").unwrap().read_to_string(&mut about).unwrap();
         assert!(about.contains(&format!("App version: {}", env!("CARGO_PKG_VERSION"))), "{about}");
         assert!(about.contains("Debug logging: on"), "{about}");
-        let log = zip.file_names().find(|name| name.starts_with("logs/")).unwrap().to_owned();
+        let log = zip.file_names().find_map(|name| name.ok().filter(|name| name.starts_with("logs/"))).unwrap().into_owned();
         let mut line = String::new();
         zip.by_name(&log).unwrap().read_to_string(&mut line).unwrap();
         assert_eq!(line, "a line of the log\n");

@@ -49,6 +49,6 @@ tauri-plugin-notification = "2"
 windows-registry = "0.6"
 
 [dev-dependencies]
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 tauri = { version = "2", features = ["test"] }
 tempfile = "3"

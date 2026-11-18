@@ -826,7 +826,7 @@ mod tests {
         write_diagnostics_zip(Some(&logs), &dest, "App version: 1.2.3\n").unwrap();
 
         let mut zip = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
-        let mut entries: Vec<String> = zip.file_names().map(str::to_owned).collect();
+        let mut entries: Vec<String> = zip.file_names().map(|name| name.unwrap().into_owned()).collect();
         entries.sort();
         assert_eq!(entries, ["about.txt", "logs/bhayanakshare.2026-10-01.log", "logs/bhayanakshare.2026-10-02.log"]);
         let mut about = String::new();
@@ -844,7 +844,7 @@ mod tests {
             let dest = tmp.path().join("out.zip");
             write_diagnostics_zip(logs.as_deref(), &dest, "about").unwrap();
             let zip = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
-            assert_eq!(zip.file_names().collect::<Vec<_>>(), ["about.txt"]);
+            assert_eq!(zip.file_names().map(|name| name.unwrap().into_owned()).collect::<Vec<_>>(), ["about.txt"]);
         }
     }
 

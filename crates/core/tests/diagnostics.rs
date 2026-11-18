@@ -39,7 +39,7 @@ async fn the_export_holds_the_logs_and_an_about_file_with_the_fingerprint_and_no
     alice.device.export_diagnostics(Some(&logs), &dest, "9.8.7").await.unwrap();
 
     let mut zip = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
-    let mut files: Vec<String> = zip.file_names().map(str::to_owned).collect();
+    let mut files: Vec<String> = zip.file_names().map(|name| name.unwrap().into_owned()).collect();
     files.sort();
     assert_eq!(files, ["about.txt", "logs/bhayanakshare.2026-10-06.log", "logs/bhayanakshare.2026-10-07.log"]);
     let mut text = |name: &str| {
@@ -76,7 +76,7 @@ async fn an_export_with_no_logs_is_still_the_about_file() {
         let dest = tmp.path().join("out.zip");
         alice.device.export_diagnostics(logs.as_deref(), &dest, "1.0.0").await.unwrap();
         let zip = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
-        assert_eq!(zip.file_names().collect::<Vec<_>>(), ["about.txt"]);
+        assert_eq!(zip.file_names().map(|name| name.unwrap().into_owned()).collect::<Vec<_>>(), ["about.txt"]);
     }
     alice.shutdown().await;
 }
