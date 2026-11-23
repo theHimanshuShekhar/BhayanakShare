@@ -34,7 +34,7 @@ import {
   DISCOVERY_DOCS_URL,
   FIREWALL_DOCS_URL,
   NEARBY_HINTS,
-  NEARBY_WAIT_MS,
+  NEARBY_SETTLE_MS,
   applyDiscovery,
   applyNearby,
   discoveryHint,
@@ -117,8 +117,9 @@ function Screens({ api }: { api: Api }) {
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null);
   // Looking for and installing an update: one at a time, whatever started it.
   const updater = useUpdater(api);
-  // Set once Home has waited long enough for a Nearby Device to show up.
-  const [waited, setWaited] = useState(false);
+  // Set once Home has waited long enough for a Nearby Device to show up, so that the empty state
+  // does not read as a verdict while discovery is still answering.
+  const [settled, setSettled] = useState(false);
   // A Hidden Device lists nobody Nearby, so an empty list there is no sign of a firewall.
   const [visibility, setVisibility] = useState<Visibility | null>(null);
   // Whether first run is still to be done; null until the Device has said. Until it is done its
@@ -258,7 +259,7 @@ function Screens({ api }: { api: Api }) {
   }, [pendingLink, busy]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setWaited(true), NEARBY_WAIT_MS);
+    const timer = setTimeout(() => setSettled(true), NEARBY_SETTLE_MS);
     return () => clearTimeout(timer);
   }, []);
 
@@ -368,13 +369,12 @@ function Screens({ api }: { api: Api }) {
                     </button>
                   </Hint>
                 )}
-                {(down !== null || (visibility !== "hidden" && waited && nearby.length === 0)) && (
-                  // One hint in one place: what is known (discovery could not start) takes the place
-                  // of the guess (a firewall may be in the way), and both are announced the same way.
+                {down !== null && (
+                  // Amber is only for what the app has seen go wrong: local discovery could not
+                  // start. Nobody being Nearby is not a fault, and is said plainly further down.
                   <Banner
                     kind="warn"
                     role="status"
-                    title={down === null ? t(NEARBY_HINTS.firewall) : undefined}
                     actions={
                       <a
                         className="bs-btn"
@@ -389,14 +389,33 @@ function Screens({ api }: { api: Api }) {
                       </a>
                     }
                   >
-                    {down !== null && t(down.message)}
+                    {t(down.message)}
                   </Banner>
                 )}
                 <section className="sect" aria-labelledby="devices-heading">
                   <h3 className="bs-h2" id="devices-heading">
                     {t("home.devices")}
                   </h3>
-                  {noDevices && <p className="empty">{t("home.placeholder")}</p>}
+                  {noDevices &&
+                    (settled && down === null && visibility !== "hidden" ? (
+                      // A statement, not a warning: no Device being here is ordinary. The quiet link
+                      // is where someone who expected one finds the firewall steps.
+                      <p className="empty">
+                        {t(NEARBY_HINTS.empty)}{" "}
+                        <a
+                          className="bs-btn bs-btn--quiet"
+                          href={docs}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            api.openUrl(docs).catch(() => {});
+                          }}
+                        >
+                          {t("home.notSeeing")}
+                        </a>
+                      </p>
+                    ) : (
+                      <p className="empty">{t("home.placeholder")}</p>
+                    ))}
                   <div className="grid">
                     {sortedContacts(contacts).map((c) => {
                       // A Contact that is Nearby shows what it announces until it has a name here.

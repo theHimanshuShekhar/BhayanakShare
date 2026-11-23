@@ -1,7 +1,7 @@
 {
   "name": "bhayanakshare",
   "private": true,
-  "packageManager": "pnpm@12.9.1",
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",

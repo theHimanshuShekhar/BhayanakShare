@@ -237,13 +237,20 @@ describe("accessibility: Home, redesigned", () => {
     await expectNoViolations();
   });
 
-  it("has none with the firewall hint, and with files waiting", async () => {
+  it("has none with the empty state, and with files waiting", async () => {
     const real = globalThis.setTimeout;
-    vi.spyOn(globalThis, "setTimeout").mockImplementation(((fn: () => void, ms?: number, ...args: unknown[]) =>
-      real(fn, ms === 30_000 ? 0 : ms, ...args)) as unknown as typeof setTimeout);
+    // Only the settle fires at once; Testing Library's own waits, which share the delay, stay real.
+    let armed = true;
+    vi.spyOn(globalThis, "setTimeout").mockImplementation((((fn: () => void, ms?: number, ...args: unknown[]) => {
+      if (armed && ms === 5_000) {
+        armed = false;
+        return real(fn, 0, ...args);
+      }
+      return real(fn, ms, ...args);
+    }) as unknown) as typeof setTimeout);
     const device = await start();
     await device.shell({ type: "send_files", paths: ["/tmp/a.txt"] });
-    await screen.findByText(/No Devices found on this network yet/);
+    await screen.findByText(/No one else is running BhayanakShare on this network right now/);
     await screen.findByText(/Choose a Device to send a\.txt to/);
     await expectNoViolations();
     vi.restoreAllMocks();
