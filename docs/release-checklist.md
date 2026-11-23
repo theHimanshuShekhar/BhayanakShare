@@ -306,7 +306,7 @@ The by-hand checklist is in [`docs/accessibility.md`](accessibility.md#before-a-
 
 ## Not in the gate
 
-- **Linux rows**: nothing on Linux is run at present, because there is no Linux desktop with a display to run it on. The packages are still built and published, and the README says plainly that they are unverified. These rows come back, and that sentence goes, the day a Linux desktop exists — a machine, or a VM with a session.
+- **Linux rows**: the project has no Linux desktop of its own to run them on, so they stay out of the gate. Volunteer runs are recorded on the release ticket and count as evidence, not as gate passes: UPD-2 was covered that way on 0.9.1, by a CachyOS/Wayland PC updating 0.9.0 to 0.9.1. The rows come back when there is a desktop to run them on repeatedly — a machine, or a VM with a session.
 - **Internet and relay rows**: a Transfer over the internet, through n0's relays, n0 DNS or the public DHT. The relay is covered by automated tests: a Transfer through a rate-limited relay (`crates/core/tests/relay_limit.rs`) and the lookup in the public DHT (`crates/core/src/dht.rs`). Both run on demand rather than in CI ([development notes](development.md#tests)), so the gate runs them as AUTO-1 and AUTO-2.
 - **Windows ↔ Windows rows**: covered by Windows CI, which runs the Device API integration tests on Windows, with two Devices in one process.
 - **macOS, ARM builds, and Linux distros other than Ubuntu 22.04+ and Fedora 39+.** Not part of version 1, or not checked (development notes, Install and update).

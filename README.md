@@ -79,7 +79,7 @@ When a new version is out, BhayanakShare tells you, and on Windows and the AppIm
 ## Works where you are
 
 - **Windows 11** (64-bit): one installer, no administrator rights needed.
-- **Linux** (64-bit): AppImage, `.deb` (Ubuntu 22.04 and newer) and `.rpm` (Fedora 39 and newer). **Unverified so far**: Linux builds are published with every release, but none of them has been run on real hardware yet.
+- **Linux** (64-bit): AppImage, `.deb` (Ubuntu 22.04 and newer) and `.rpm` (Fedora 39 and newer). Run once so far on a volunteer's CachyOS/Wayland PC — installed, sent and received a file, and updated itself from 0.9.0 to 0.9.1. The rest of the Linux side of the release checklist is still unrun.
 - **macOS** isn't supported yet.
 
 Both computers need BhayanakShare. Windows and Linux can send to each other.
